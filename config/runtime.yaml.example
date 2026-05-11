@@ -1,0 +1,24 @@
+# config/runtime.yaml — runtime tunables. Copy to runtime.yaml to override defaults.
+
+window:
+  title_regex: >-
+    ^Asteria MU - Powered by IGCN
+    - Name: \[(?P<name>[^\]]+)\]
+    Level: \[(?P<level>\d+)\]
+    Master Level: \[(?P<master>\d+)\]
+    Resets: \[(?P<resets>\d+)\]$
+
+execution:
+  default_mode: hybrid          # hybrid | background | foreground
+
+retry:
+  per_state_max: 3              # retries before RETRY_LATER
+  cooldown_seconds: 30          # RETRY_LATER wait time
+  lobby_poll_seconds: 5
+
+timing:
+  scheduler_tick_ms: 200        # main loop sleep between character ticks
+  dashboard_refresh_hz: 2       # terminal table refresh rate
+
+orchestrator:
+  max_runs_per_char: 10         # completed_count ceiling → DONE_MAX_RUNS

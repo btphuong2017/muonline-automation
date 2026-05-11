@@ -1,0 +1,43 @@
+# config/templates.yaml — auto-populated by: varka-auto capture-template ...
+# Do NOT hand-edit the 'path' values; use the capture-template command instead.
+
+templates:
+  lobby/lobby_label:
+    path: assets/templates/lobby/lobby_label.png
+    roi: [10, 50, 200, 30]     # x, y, w, h in client coordinates
+    threshold: 0.85
+
+  npc/hover_indicator:
+    path: assets/templates/npc/hover_indicator.png
+    roi_size: [80, 80]          # search-window around candidate point
+    threshold: 0.80
+
+  popup/popup1_anchor:
+    path: assets/templates/popup/popup1_anchor.png
+    roi: [400, 200, 300, 200]
+    threshold: 0.90
+
+  popup/popup1_enter_varka_button:
+    path: assets/templates/popup/popup1_enter_varka_button.png
+    roi: [430, 360, 240, 60]
+    threshold: 0.88
+
+  popup/popup2_anchor:
+    path: assets/templates/popup/popup2_anchor.png
+    roi: [400, 200, 300, 200]
+    threshold: 0.90
+
+  popup/popup2_enter_button:
+    path: assets/templates/popup/popup2_enter_button.png
+    roi: [430, 360, 240, 60]
+    threshold: 0.88
+
+  popup/daily_limit_dialog:
+    path: assets/templates/popup/daily_limit_dialog.png
+    roi: [300, 150, 400, 300]
+    threshold: 0.88
+
+  event/event_map_label_varka:
+    path: assets/templates/event/event_map_label_varka.png
+    roi: [0, 0, 400, 60]
+    threshold: 0.85

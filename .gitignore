@@ -1,0 +1,26 @@
+# Personal config — contain real character names / account info
+config/characters.yaml
+config/runtime.yaml
+
+# Debug logs & screenshots — contain game state, char names, UI captures
+.claude/logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user

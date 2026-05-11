@@ -1,0 +1,14 @@
+# config/characters.yaml — copy this file to characters.yaml and fill in your real display names.
+# This file is safe to commit; characters.yaml (with real names) is protected by the hook.
+
+characters:
+  - display_name: Char1
+    enabled: true
+  - display_name: Char2
+    enabled: true
+  - display_name: Char3
+    enabled: true
+  - display_name: Char4
+    enabled: false
+  - display_name: Char5
+    enabled: false

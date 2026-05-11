@@ -1,0 +1,153 @@
+templates:
+  event/confirm_ok_button:
+    path: assets\templates\event\confirm_ok_button.png
+    roi:
+    - 566
+    - 408
+    - 69
+    - 27
+    threshold: 0.85
+  event/enter_button_enabled:
+    path: assets\templates\event\enter_button_enabled.png
+    roi:
+    - 951
+    - 605
+    - 116
+    - 44
+    threshold: 0.85
+  event/event_window_header:
+    path: assets\templates\event\event_window_header.png
+    roi:
+    - 473
+    - 45
+    - 352
+    - 26
+    threshold: 0.85
+  event/finish_dialog_anchor:
+    path: assets\templates\event\finish_dialog_anchor.png
+    roi:
+    - 611
+    - 409
+    - 62
+    - 24
+    threshold: 0.85
+  event/finish_exit_button:
+    path: assets\templates\event\finish_exit_button.png
+    roi: null
+    threshold: 0.85
+  event/helper_pause_icon:
+    path: assets\templates\event\helper_pause_icon.png
+    roi:
+    - 313
+    - 43
+    - 27
+    - 24
+    threshold: 0.85
+  event/helper_play_icon:
+    path: assets\templates\event\helper_play_icon.png
+    roi:
+    - 313
+    - 43
+    - 27
+    - 24
+    threshold: 0.85
+  event/imperial_guardian_entry:
+    path: assets\templates\event\imperial_guardian_entry.png
+    roi:
+    - 233
+    - 430
+    - 124
+    - 28
+    threshold: 0.85
+  event/popup1_anchor:
+    path: assets\templates\event\popup1_anchor.png
+    roi:
+    - 588
+    - 303
+    - 100
+    - 25
+    threshold: 0.85
+  event/timer_exit_waiting:
+    path: assets\templates\event\timer_exit_waiting.png
+    roi:
+    - 1035
+    - 447
+    - 209
+    - 21
+    threshold: 0.85
+  event/timer_panel_anchor:
+    path: assets\templates\event\timer_panel_anchor.png
+    roi:
+    - 1023
+    - 404
+    - 231
+    - 28
+    threshold: 0.85
+  event/timer_standby:
+    path: assets\templates\event\timer_standby.png
+    roi:
+    - 1035
+    - 447
+    - 209
+    - 21
+    threshold: 0.85
+  event/varka_map_label:
+    path: assets\templates\event\varka_map_label.png
+    roi:
+    - 74
+    - 6
+    - 87
+    - 17
+    threshold: 0.85
+  lobby/lobby_label:
+    path: assets\templates\lobby\lobby_label.png
+    roi:
+    - 1
+    - 1
+    - 213
+    - 31
+    threshold: 0.85
+  npc/hover_indicator:
+    path: assets\templates\npc\hover_indicator.png
+    roi: null
+    threshold: 0.8
+  npc/npc_dialog_title:
+    path: assets\templates\npc\npc_dialog_title.png
+    roi:
+    - 495
+    - 229
+    - 294
+    - 37
+    threshold: 0.8
+  popup/daily_limit_dialog:
+    path: assets\templates\popup\daily_limit_dialog.png
+    roi:
+    - 609
+    - 406
+    - 69
+    - 31
+    threshold: 0.85
+  popup/popup1_anchor:
+    path: assets\templates\popup\popup1_anchor.png
+    roi:
+    - 588
+    - 303
+    - 100
+    - 25
+    threshold: 0.85
+  popup/popup1_enter_varka_button:
+    path: assets\templates\popup\popup1_enter_varka_button.png
+    roi:
+    - 587
+    - 303
+    - 105
+    - 25
+    threshold: 0.85
+  popup/popup2_enter_button:
+    path: assets\templates\popup\popup2_enter_button.png
+    roi:
+    - 558
+    - 404
+    - 66
+    - 24
+    threshold: 0.85

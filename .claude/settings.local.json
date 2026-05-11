@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\Works\\\\Pet Projects\\\\muonline-automation\\\\docs\" -Recurse -Filter \"*.md\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(uv run *)",
+      "Bash(Get-ChildItem assets/origin)",
+      "Bash(Select-Object Name, Length)",
+      "PowerShell(head *)",
+      "Bash(python -c \"import ast; tree = ast.parse\\(open\\('src/varka_auto/cli.py'\\).read\\(\\)\\); funcs = [\\(n.name, n.lineno\\) for n in ast.walk\\(tree\\) if isinstance\\(n, ast.FunctionDef\\)]; print\\('\\\\n'.join\\(f'{l}: {n}' for n,l in funcs\\)\\)\")",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Works\\\\Pet Projects\\\\muonline-automation\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })",
+      "Bash(Get-ChildItem *)"
+    ]
+  }
+}

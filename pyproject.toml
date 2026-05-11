@@ -1,0 +1,41 @@
+[project]
+name = "varka-auto"
+version = "0.0.1"
+description = "Windows automation bot for Mu Online Varka (Imperial Guardian) event."
+requires-python = ">=3.10"
+authors = [
+    { name = "btphuong2017" },
+]
+dependencies = [
+    "pywin32>=306; sys_platform == 'win32'",
+    "mss>=9.0",
+    "opencv-python>=4.10",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pillow>=10.4",
+]
+
+[project.scripts]
+varka-auto = "varka_auto.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/varka_auto"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
