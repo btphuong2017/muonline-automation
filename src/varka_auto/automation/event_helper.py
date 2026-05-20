@@ -10,7 +10,7 @@ from varka_auto.automation.focus import set_foreground
 from varka_auto.automation.input import SendInputBackend
 from varka_auto.vision.event_map import EventMapDetector, EventMapStatus, HelperState, TimerState
 
-_HELPER_SETTLE_S = 0.8
+_HELPER_SETTLE_S = 2.5
 _HELPER_VERIFY_S = 0.3
 
 
@@ -38,7 +38,7 @@ def enter_and_activate(
     no_click: bool = False,
     max_retries: int = 3,
     abort_vk: int = 0x1B,
-    map_timeout_s: float = 15.0,
+    map_timeout_s: float = 25.0,
 ) -> ActivateReport:
     """Wait for event map then activate helper. Returns immediately after — does NOT wait for completion."""
     if _check_abort(abort_vk):
@@ -88,11 +88,10 @@ def enter_and_activate(
 
         retries_used += 1
     else:
-        if last_helper == HelperState.UNKNOWN:
-            return ActivateReport(
-                result=ActivateResult.HELPER_ACTIVATE_FAILED,
-                retries_used=retries_used,
-            )
+        return ActivateReport(
+            result=ActivateResult.HELPER_ACTIVATE_FAILED,
+            retries_used=retries_used,
+        )
 
     return ActivateReport(
         result=ActivateResult.SUCCESS,
@@ -191,7 +190,7 @@ def run_event(
     no_click: bool = False,
     max_retries: int = 3,
     abort_vk: int = 0x1B,
-    map_timeout_s: float = 15.0,
+    map_timeout_s: float = 25.0,
     completion_timeout_s: float = 300.0,
     on_alert=None,
 ) -> EventRunReport:
@@ -255,11 +254,10 @@ def run_event(
 
         retries_used += 1
     else:
-        if last_helper == HelperState.UNKNOWN:
-            return EventRunReport(
-                result=EventRunResult.HELPER_ACTIVATE_FAILED,
-                retries_used=retries_used,
-            )
+        return EventRunReport(
+            result=EventRunResult.HELPER_ACTIVATE_FAILED,
+            retries_used=retries_used,
+        )
 
     if _check_abort(abort_vk):
         return EventRunReport(

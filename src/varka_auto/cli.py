@@ -1295,5 +1295,9 @@ def capture_template(
     )
 
 
+from varka_auto.harmory_cmd import harmory_app
+app.add_typer(harmory_app, name="harmory")
+
+
 def main() -> None:
     app()

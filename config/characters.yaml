@@ -1,0 +1,16 @@
+characters:
+- display_name: PPRW
+  enabled: true
+  max_runs: 10
+- display_name: PPDW
+  enabled: true
+  max_runs: 10
+- display_name: PPCR
+  enabled: true
+  max_runs: 10
+- display_name: PPAC
+  enabled: true
+  max_runs: 10
+- display_name: PPIK
+  enabled: true
+  max_runs: 10

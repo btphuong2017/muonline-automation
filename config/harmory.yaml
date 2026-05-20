@@ -1,0 +1,18 @@
+harmory:
+  click_point:
+    x: 580        # TODO: thay bằng tọa độ thực (client area, tính từ góc trên-trái cửa sổ game)
+    y: 336
+  result_roi:
+    x: 310        # TODO
+    y: 425
+    width: 293  # TODO
+    height: 73  # TODO
+  expected_template_path: assets/harmory/expected_result.png   # chạy capture-roi khi 3 dòng text xuất hiện để tạo file này
+  compare_method: template_match    # hoặc color_mask_template_match nếu background nhiễu
+  threshold: 0.90
+  click_delay_ms: 3000              # chờ 3 giây sau click trước khi capture
+  max_attempts: null                # null = retry vô hạn cho tới khi match hoặc user stop
+  stop_hotkey: F12                  # phím dừng bot (F9-F12, Pause, ScrollLock, Insert, Delete, Escape)
+  save_debug_screenshot: true
+  # color_hsv_lower: [145, 80, 100]    # uncomment và điều chỉnh nếu màu hồng game khác default
+  # color_hsv_upper: [179, 255, 255]

@@ -1,6 +1,9 @@
-# Varka Auto
+# Varka Auto & Harmory Auto
 
-Bot tự động hóa sự kiện **Varka (Imperial Guardian)** trong Mu Online trên Windows.
+Bot tự động hóa hai tính năng trong Mu Online trên Windows:
+
+- **Varka Auto** — chạy event Imperial Guardian tự động cho nhiều nhân vật xen kẽ
+- **Harmory Auto** — click cố định, capture vùng kết quả, so sánh với expected template, lặp cho tới khi match
 
 Bot sử dụng screenshot + template matching + Windows input API để thao tác giao diện game.
 Không đọc memory game, không chỉnh packet, không can thiệp vào game client.
@@ -50,6 +53,30 @@ characters:
 ```
 
 > `display_name` phải khớp chính xác (case-sensitive) với tên hiển thị trong title bar cửa sổ Mu Online.
+
+### `config/harmory.yaml`
+
+Cấu hình cho tính năng Harmory Auto:
+
+```yaml
+harmory:
+  click_point:
+    x: 580          # tọa độ click (client area, tính từ góc trên-trái cửa sổ game)
+    y: 336
+  result_roi:
+    x: 310          # vùng capture kết quả (client area)
+    y: 425
+    width: 293
+    height: 73
+  expected_template_path: assets/harmory/expected_result.png
+  compare_method: template_match      # hoặc color_mask_template_match
+  threshold: 0.90
+  click_delay_ms: 3000                # chờ 3s sau click trước khi capture
+  max_attempts: null                  # null = retry vô hạn
+  save_debug_screenshot: true
+  # color_hsv_lower: [145, 80, 100]   # tune màu hồng nếu cần
+  # color_hsv_upper: [179, 255, 255]
+```
 
 ### `config/templates.yaml`
 
@@ -160,6 +187,64 @@ uv run python -m varka_auto test-event-helper --char PPGL
 uv run python -m varka_auto test-enter-lobby --char PPGL --no-click
 uv run python -m varka_auto test-enter-lobby --char PPGL
 ```
+
+---
+
+## Harmory Auto
+
+Bot click 1 điểm cố định, chờ 3 giây, capture ROI, so sánh với expected template (3 dòng text màu hồng). Nếu match → dừng và báo success. Nếu chưa match → lặp lại cho tới khi match hoặc user dừng.
+
+Chỉ chạy cho **1 nhân vật** được chỉ định khi gọi lệnh.
+
+### Calibration (lần đầu hoặc sau khi thay đổi giao diện)
+
+**Bước 1** — Kiểm tra ROI đúng vùng:
+```bash
+uv run python -m varka_auto harmory capture-roi --char PPIK
+```
+Mở file PNG in ra, kiểm tra có đúng vùng 3 dòng text không. Nếu sai → điều chỉnh `result_roi` trong `config/harmory.yaml`.
+
+**Bước 2** — Capture expected template (khi 3 dòng text đang hiện trên màn hình):
+```bash
+uv run python -m varka_auto harmory capture-roi --char PPIK
+# Copy file PNG ra thành expected template:
+copy ".claude\logs\harmory\PPIK\roi_YYYYMMDD_HHMMSS.png" "assets\harmory\expected_result.png"
+```
+
+**Bước 3** — Xác nhận confidence đạt threshold:
+```bash
+# Khi 3 dòng text đang hiện:
+uv run python -m varka_auto harmory compare --char PPIK
+# → phải in PASS với confidence >= 0.90
+```
+
+**Bước 4** — Test click đúng điểm:
+```bash
+uv run python -m varka_auto harmory click-test --char PPIK
+```
+
+### Chạy Harmory Auto
+
+```bash
+uv run python -m varka_auto harmory run --char PPIK
+
+# Giới hạn số lần thử:
+uv run python -m varka_auto harmory run --char PPIK --max-attempts 50
+```
+
+Nhấn **Esc** hoặc **Ctrl+C** để dừng an toàn.
+
+### Xử lý nhiều thứ tự dòng
+
+Nếu 3 dòng text có thể xuất hiện theo thứ tự khác nhau, capture từng ordering rồi lưu với tên:
+
+```
+assets/harmory/expected_result.png     # ordering A (bắt buộc)
+assets/harmory/expected_result_B.png   # ordering B (tuỳ chọn)
+assets/harmory/expected_result_C.png   # ordering C (tuỳ chọn)
+```
+
+Bot tự động thử tất cả và trả về confidence cao nhất.
 
 ---
 

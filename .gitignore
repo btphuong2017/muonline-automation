@@ -1,7 +1,3 @@
-# Personal config — contain real character names / account info
-config/characters.yaml
-config/runtime.yaml
-
 # Debug logs & screenshots — contain game state, char names, UI captures
 .claude/logs/
 

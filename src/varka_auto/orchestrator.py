@@ -275,6 +275,7 @@ class Orchestrator:
     def _step_run_event(self, char: CharacterRuntime, det: dict) -> None:
         from varka_auto.automation.event_helper import enter_and_activate, ActivateResult
 
+        self._log_event(f"[cyan]{char.name}: waiting for event map entry...[/cyan]")
         report = enter_and_activate(char.hwnd, det["event_map"])
         if report.result == ActivateResult.SUCCESS:
             self._on_success(char)   # -> WAIT_COMPLETION
