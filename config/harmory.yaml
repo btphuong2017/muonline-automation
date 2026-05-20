@@ -9,7 +9,7 @@ harmory:
     height: 73  # TODO
   expected_template_path: assets/harmory/expected_result.png   # chạy capture-roi khi 3 dòng text xuất hiện để tạo file này
   compare_method: template_match    # hoặc color_mask_template_match nếu background nhiễu
-  threshold: 0.90
+  threshold: 0.80
   click_delay_ms: 3000              # chờ 3 giây sau click trước khi capture
   max_attempts: null                # null = retry vô hạn cho tới khi match hoặc user stop
   stop_hotkey: F12                  # phím dừng bot (F9-F12, Pause, ScrollLock, Insert, Delete, Escape)
