@@ -77,7 +77,7 @@ def run_harmory_loop(
     cfg: HarmoryConfig,
     stop_event: threading.Event,
     *,
-    on_attempt: Optional[Callable[[int, CompareResult], None]] = None,
+    on_attempt: Optional[Callable[[int, CompareResult, np.ndarray], None]] = None,
     on_match: Optional[Callable[[int, CompareResult, np.ndarray], None]] = None,
     on_error: Optional[Callable[[str], None]] = None,
 ) -> HarmoryRunReport:
@@ -123,7 +123,7 @@ def run_harmory_loop(
                 # Non-fatal — game window may be briefly obscured; keep trying
                 attempt += 1
                 if on_attempt:
-                    on_attempt(attempt, CompareResult(matched=False, confidence=0.0, method=cfg.compare_method))
+                    on_attempt(attempt, CompareResult(matched=False, confidence=0.0, method=cfg.compare_method), np.empty(0, dtype=np.uint8))
                 continue
 
             # Step 4: compare
@@ -132,7 +132,7 @@ def run_harmory_loop(
             last_confidence = result.confidence
 
             if on_attempt:
-                on_attempt(attempt, result)
+                on_attempt(attempt, result, frame)
 
             if result.matched:
                 if on_match:

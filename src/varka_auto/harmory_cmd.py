@@ -223,14 +223,21 @@ def run_cmd(
     state: dict = {
         "attempts": 0,
         "last_confidence": 0.0,
+        "best_confidence": 0.0,
         "status": "RUNNING",
         "last_error": "",
     }
 
-    def _on_attempt(attempt: int, result) -> None:
+    best_capture_dir = cfg.expected_template_path.parent  # assets/harmory/
+
+    def _on_attempt(attempt: int, result, frame) -> None:
+        import numpy as np
         state["attempts"] = attempt
         state["last_confidence"] = result.confidence
         state["status"] = "RUNNING"
+        if result.confidence > state["best_confidence"] and frame.size > 0:
+            state["best_confidence"] = result.confidence
+            _save_png(frame, best_capture_dir, "best_capture.png")
 
     def _on_match(attempt: int, result, frame) -> None:
         state["attempts"] = attempt
@@ -261,6 +268,7 @@ def run_cmd(
         t.add_row("action:", "harmory")
         t.add_row("attempts:", str(state["attempts"]))
         t.add_row("last_confidence:", f"{state['last_confidence']:.4f}")
+        t.add_row("best_confidence:", f"{state['best_confidence']:.4f}")
         t.add_row("threshold:", f"{cfg.threshold:.4f}")
         t.add_row("elapsed:", _fmt_elapsed(elapsed))
         t.add_row("status:", f"[{status_color}]{status}[/{status_color}]")
