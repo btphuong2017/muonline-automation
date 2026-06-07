@@ -69,10 +69,12 @@ harmory:
     width: 293
     height: 73
   expected_template_path: assets/harmory/expected_result.png
-  compare_method: template_match      # hoặc color_mask_template_match
-  threshold: 0.90
-  click_delay_ms: 3000                # chờ 3s sau click trước khi capture
+  compare_method: per_row_pink        # per_row_pink | template_match | color_mask_template_match
+  num_stat_rows: 3                    # số dòng stat trong result panel
+  threshold: 0.60                     # 0.60 = chap nhan 2/3 rows pink; 0.70 = yeu cau tat ca rows pink
+  click_delay_ms: 4000                # chờ 4s sau click trước khi capture
   max_attempts: null                  # null = retry vô hạn
+  stop_hotkey: F12                    # phím dừng bot (F9-F12, Pause, ScrollLock, Insert, Delete, Escape)
   save_debug_screenshot: true
   # color_hsv_lower: [145, 80, 100]   # tune màu hồng nếu cần
   # color_hsv_upper: [179, 255, 255]
@@ -192,9 +194,21 @@ uv run python -m varka_auto test-enter-lobby --char PPGL
 
 ## Harmory Auto
 
-Bot click 1 điểm cố định, chờ 3 giây, capture ROI, so sánh với expected template (3 dòng text màu hồng). Nếu match → dừng và báo success. Nếu chưa match → lặp lại cho tới khi match hoặc user dừng.
+Bot click 1 điểm cố định, chờ 4 giây, capture ROI, kiểm tra kết quả, lặp cho tới khi match hoặc user dừng bằng **F12** (hoặc Ctrl+C).
 
 Chỉ chạy cho **1 nhân vật** được chỉ định khi gọi lệnh.
+
+### Cơ chế phát hiện kết quả (`per_row_pink`)
+
+Game Mu Online dùng màu chữ để biểu thị mức độ stat:
+- Màu **trắng** — mức bình thường
+- Màu **xanh dương** — mức khá
+- Màu **hồng/magenta** — đã đạt max
+
+Bot chia ROI thành `num_stat_rows` dải ngang (mỗi dải = 1 stat), đếm pink pixel trong từng dải, so sánh với expected template. Confidence = mean của tỉ lệ pink pixel qua tất cả các dải:
+
+- `threshold: 0.60` — chấp nhận 2/3 dòng pink là đủ
+- `threshold: 0.70` — yêu cầu tất cả dòng đều pink
 
 ### Calibration (lần đầu hoặc sau khi thay đổi giao diện)
 
@@ -213,9 +227,21 @@ copy ".claude\logs\harmory\PPIK\roi_YYYYMMDD_HHMMSS.png" "assets\harmory\expecte
 
 **Bước 3** — Xác nhận confidence đạt threshold:
 ```bash
-# Khi 3 dòng text đang hiện:
+# Khi 3 dòng text đang hiện (tất cả stats maxed):
 uv run python -m varka_auto harmory compare --char PPIK
-# → phải in PASS với confidence >= 0.90
+# → phải in PASS với confidence >= threshold (mặc định 0.60)
+```
+
+Có thể test offline không cần game (dùng hai ảnh trong `assets/harmory/`):
+```bash
+.venv\Scripts\python.exe -c "
+import cv2, sys; sys.path.insert(0, 'src')
+from pathlib import Path
+from varka_auto.automation.harmory import _compare_per_row_pink
+tpl = Path('assets/harmory/expected_result.png')
+r = _compare_per_row_pink(cv2.imread(str(tpl)), tpl, 0.60, [145,80,100], [179,255,255], 3)
+print('confidence:', r.confidence, 'matched:', r.matched)
+"
 ```
 
 **Bước 4** — Test click đúng điểm:
@@ -232,19 +258,7 @@ uv run python -m varka_auto harmory run --char PPIK
 uv run python -m varka_auto harmory run --char PPIK --max-attempts 50
 ```
 
-Nhấn **Esc** hoặc **Ctrl+C** để dừng an toàn.
-
-### Xử lý nhiều thứ tự dòng
-
-Nếu 3 dòng text có thể xuất hiện theo thứ tự khác nhau, capture từng ordering rồi lưu với tên:
-
-```
-assets/harmory/expected_result.png     # ordering A (bắt buộc)
-assets/harmory/expected_result_B.png   # ordering B (tuỳ chọn)
-assets/harmory/expected_result_C.png   # ordering C (tuỳ chọn)
-```
-
-Bot tự động thử tất cả và trả về confidence cao nhất.
+Nhấn **F12** hoặc **Ctrl+C** để dừng an toàn.
 
 ---
 

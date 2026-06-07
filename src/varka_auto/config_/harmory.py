@@ -8,7 +8,7 @@ from typing import Optional
 
 import yaml
 
-_VALID_COMPARE_METHODS = {"template_match", "color_mask_template_match"}
+_VALID_COMPARE_METHODS = {"template_match", "color_mask_template_match", "per_row_pink"}
 # Default HSV range for bright pink / magenta-pink text (OpenCV H scale 0-179).
 # Calibrate actual values from capture-roi output if needed.
 _DEFAULT_HSV_LOWER = [145, 80, 100]
@@ -50,6 +50,7 @@ class HarmoryConfig:
     stop_hotkey_vk: int = 0x7B
     color_hsv_lower: list[int] = field(default_factory=lambda: list(_DEFAULT_HSV_LOWER))
     color_hsv_upper: list[int] = field(default_factory=lambda: list(_DEFAULT_HSV_UPPER))
+    num_stat_rows: int = 3
 
 
 class HarmoryConfigError(ValueError):
@@ -132,6 +133,9 @@ def load_harmory_config(path: Path) -> HarmoryConfig:
     if not (isinstance(hsv_upper_raw, list) and len(hsv_upper_raw) == 3):
         raise HarmoryConfigError(f"{path}: 'harmory.color_hsv_upper' must be a list of 3 ints.")
 
+    # --- num_stat_rows (per_row_pink method) ---
+    num_stat_rows = int(h.get("num_stat_rows", 3))
+
     # --- stop_hotkey ---
     stop_hotkey = str(h.get("stop_hotkey", "F12"))
     if stop_hotkey not in _VK_MAP:
@@ -153,4 +157,5 @@ def load_harmory_config(path: Path) -> HarmoryConfig:
         stop_hotkey_vk=_VK_MAP[stop_hotkey],
         color_hsv_lower=[int(v) for v in hsv_lower_raw],
         color_hsv_upper=[int(v) for v in hsv_upper_raw],
+        num_stat_rows=num_stat_rows,
     )
