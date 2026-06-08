@@ -208,7 +208,7 @@ def ocr_test_cmd(
         raise typer.Exit(code=1)
 
     fh = frame.shape[0]
-    num_rows = cfg.num_stat_rows
+    num_rows = len(cfg.expected_stat_texts) if cfg.expected_stat_texts else cfg.num_stat_rows
     row_h = max(fh // num_rows, 1)
 
     console.print(f"\nCapturing ROI for [bold]{char}[/bold] ({fh}px height, {num_rows} rows, scale={cfg.ocr_scale}x):\n")
@@ -221,20 +221,26 @@ def ocr_test_cmd(
         console.print(f"  Row {i}: [cyan]{text!r}[/cyan]")
 
     if cfg.expected_stat_texts:
-        console.print(f"\nComparison (threshold={cfg.threshold:.2f}):")
+        console.print(f"\nExpected (order-independent, threshold={cfg.threshold:.2f}):")
+        remaining = list(enumerate(row_texts))
         matches = 0
-        for i in range(num_rows):
-            actual = row_texts[i] if i < len(row_texts) else ""
-            expected = cfg.expected_stat_texts[i] if i < len(cfg.expected_stat_texts) else ""
-            ok = bool(actual and actual == expected)
-            if ok:
+        for expected in cfg.expected_stat_texts:
+            found_idx = None
+            for idx, actual in remaining:
+                if expected and actual == expected:
+                    found_idx = idx
+                    remaining.remove((idx, actual))
+                    break
+            if found_idx is not None:
                 matches += 1
-            mark = "[green]MATCH[/green]" if ok else "[red]MISMATCH[/red]"
-            console.print(f"  Row {i}: {actual!r}  vs  {expected!r}  -> {mark}")
-        confidence = matches / num_rows
+                console.print(f'  [green]"{expected}"[/green]  -> found (Row {found_idx})  [green]MATCH[/green]')
+            else:
+                console.print(f'  [red]"{expected}"[/red]  -> NOT FOUND')
+        total = len(cfg.expected_stat_texts)
+        confidence = matches / total if total > 0 else 0.0
         passed = confidence >= cfg.threshold
         result_str = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
-        console.print(f"\nConfidence: {confidence:.4f} (threshold={cfg.threshold:.4f}) -> {result_str}")
+        console.print(f"\nConfidence: {confidence:.4f} ({matches}/{total}) (threshold={cfg.threshold:.4f}) -> {result_str}")
     else:
         console.print("\n[dim]No expected_stat_texts configured. Add to config/harmory.yaml:[/dim]")
         console.print("[dim]expected_stat_texts:[/dim]")

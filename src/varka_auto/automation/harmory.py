@@ -300,11 +300,18 @@ def _compare_per_row_ocr(
     fh = frame.shape[0]
     row_h = max(fh // num_rows, 1)
 
-    matches = 0
-    for i, expected in enumerate(expected_texts):
+    # OCR all rows first
+    actual_texts = []
+    for i in range(num_rows):
         fy0, fy1 = i * row_h, min((i + 1) * row_h, fh)
-        actual = _ocr_strip(frame[fy0:fy1], ocr_scale)
-        if actual and actual == expected:
+        actual_texts.append(_ocr_strip(frame[fy0:fy1], ocr_scale))
+
+    # Order-independent: each expected text can match any actual row
+    remaining = list(actual_texts)
+    matches = 0
+    for expected in expected_texts:
+        if expected and expected in remaining:
+            remaining.remove(expected)
             matches += 1
 
     confidence = matches / num_rows
