@@ -74,6 +74,20 @@ def _fmt_elapsed(elapsed_s: float) -> str:
     return str(timedelta(seconds=int(elapsed_s)))
 
 
+def _write_expected_stat_texts(config_path: Path, texts: list[str]) -> None:
+    """Replace the expected_stat_texts block in the YAML file, preserving all other content."""
+    import re
+
+    content = config_path.read_text(encoding="utf-8")
+    new_block = "  expected_stat_texts:\n" + "\n".join(f'    - "{t}"' for t in texts)
+    # Matches both inline `expected_stat_texts: []` and multi-line list entries
+    pattern = r"  expected_stat_texts:[^\n]*(?:\n    -[^\n]*)*"
+    updated, count = re.subn(pattern, new_block, content)
+    if count == 0:
+        raise ValueError("'expected_stat_texts' key not found in config file.")
+    config_path.write_text(updated, encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # capture-roi
 # ---------------------------------------------------------------------------
@@ -244,11 +258,10 @@ def capture_expected_cmd(
     rows: Optional[int] = typer.Option(None, "--rows", help="Number of rows to OCR (default: num_stat_rows from config)"),
     output_dir: Path = typer.Option(Path(".claude/logs/harmory"), "--output-dir", help="Directory to save debug PNG"),
 ) -> None:
-    """Capture a custom ROI, OCR each row, and print the expected_stat_texts snippet.
+    """Capture a custom ROI, OCR each row, and write results to expected_stat_texts in config.
 
     Use this when the desired result is displayed at a position different from result_roi.
-    Run the command while the game shows the result you want, then copy the printed
-    YAML snippet into expected_stat_texts in config/harmory.yaml.
+    Run the command while the game shows the result you want — config is updated automatically.
     """
     # Parse --roi argument
     try:
@@ -292,10 +305,17 @@ def capture_expected_cmd(
         texts.append(text)
         console.print(f"  Row {i}: [cyan]{text!r}[/cyan]")
 
-    console.print("\nPaste vào config/harmory.yaml:")
-    console.print("  [bold]expected_stat_texts:[/bold]")
-    for text in texts:
-        console.print(f'    - [green]"{text}"[/green]')
+    try:
+        _write_expected_stat_texts(harmory_yaml, texts)
+        console.print(f"\n[green]Config updated:[/green] {harmory_yaml}")
+        console.print("  [bold]expected_stat_texts:[/bold]")
+        for text in texts:
+            console.print(f'    - [green]"{text}"[/green]')
+    except Exception as exc:
+        console.print(f"\n[red]Failed to update config: {exc}[/red]")
+        console.print("Copy manually into expected_stat_texts in config/harmory.yaml:")
+        for text in texts:
+            console.print(f'  - "{text}"')
 
     ts = time.strftime("%Y%m%d_%H%M%S")
     dest = _save_png(frame, output_dir / char, f"capture_expected_{ts}.png")
