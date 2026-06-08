@@ -402,6 +402,7 @@ def run_cmd(
         "attempts": 0,
         "last_confidence": 0.0,
         "best_confidence": 0.0,
+        "best_rows": [],
         "status": "RUNNING",
         "last_error": "",
     }
@@ -415,6 +416,7 @@ def run_cmd(
         state["status"] = "RUNNING"
         if result.confidence > state["best_confidence"] and frame.size > 0:
             state["best_confidence"] = result.confidence
+            state["best_rows"] = list(result.actual_texts)
             _save_png(frame, best_capture_dir, "best_capture.png")
 
     def _on_match(attempt: int, result, frame) -> None:
@@ -448,6 +450,10 @@ def run_cmd(
         t.add_row("last_confidence:", f"{state['last_confidence']:.4f}")
         t.add_row("best_confidence:", f"{state['best_confidence']:.4f}")
         t.add_row("threshold:", f"{cfg.threshold:.4f}")
+        if cfg.expected_stat_texts:
+            t.add_row("expected:", "\n".join(f'"{s}"' for s in cfg.expected_stat_texts))
+        if state["best_rows"]:
+            t.add_row("best_rows:", "\n".join(f'"{s}"' for s in state["best_rows"]))
         t.add_row("elapsed:", _fmt_elapsed(elapsed))
         t.add_row("status:", f"[{status_color}]{status}[/{status_color}]")
         if state["last_error"]:

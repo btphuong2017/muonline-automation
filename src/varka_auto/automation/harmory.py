@@ -31,6 +31,7 @@ class CompareResult:
     matched: bool
     confidence: float
     method: str
+    actual_texts: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -324,7 +325,7 @@ def _compare_per_row_ocr(
             matches += 1
 
     confidence = matches / num_expected
-    return CompareResult(matched=confidence >= threshold, confidence=confidence, method="per_row_ocr")
+    return CompareResult(matched=confidence >= threshold, confidence=confidence, method="per_row_ocr", actual_texts=actual_texts)
 
 
 def _validate_window(hwnd: int, cfg: HarmoryConfig) -> None:
