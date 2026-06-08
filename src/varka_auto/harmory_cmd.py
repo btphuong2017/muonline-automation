@@ -248,7 +248,11 @@ def ocr_test_cmd(
             console.print(f"[dim]  - {text!r}[/dim]")
 
     ts = time.strftime("%Y%m%d_%H%M%S")
-    dest = _save_png(frame, output_dir / char, f"ocr_test_{ts}.png")
+    import cv2
+    debug = frame.copy()
+    for i in range(1, num_rows):
+        cv2.line(debug, (0, i * row_h), (debug.shape[1] - 1, i * row_h), (0, 255, 0), 1)
+    dest = _save_png(debug, output_dir / char, f"ocr_test_{ts}.png")
     console.print(f"\n[dim]ROI saved: {dest}[/dim]")
 
 
