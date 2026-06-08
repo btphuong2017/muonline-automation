@@ -63,11 +63,6 @@ def compare_roi(frame: np.ndarray, cfg: HarmoryConfig) -> CompareResult:
             frame, cfg.expected_template_path, cfg.threshold,
             cfg.color_hsv_lower, cfg.color_hsv_upper,
         )
-    if cfg.compare_method == "per_row_pink":
-        return _compare_per_row_pink(
-            frame, cfg.expected_template_path, cfg.threshold,
-            cfg.color_hsv_lower, cfg.color_hsv_upper, cfg.num_stat_rows,
-        )
     return _compare_template_match(frame, cfg.expected_template_path, cfg.threshold)
 
 
@@ -267,45 +262,6 @@ def _match_arrays(
     confidence = float(max_val)
     return confidence >= threshold, confidence, (int(max_loc[0]), int(max_loc[1]))
 
-
-def _compare_per_row_pink(
-    frame: np.ndarray,
-    template_path: Path,
-    threshold: float,
-    hsv_lower: list[int],
-    hsv_upper: list[int],
-    num_rows: int,
-) -> CompareResult:
-    import cv2
-
-    tpl = cv2.imread(str(template_path))
-    if tpl is None:
-        return CompareResult(matched=False, confidence=0.0, method="per_row_pink")
-
-    fh = frame.shape[0]
-    th = tpl.shape[0]
-    row_h_frame = max(fh // num_rows, 1)
-    row_h_tpl = max(th // num_rows, 1)
-
-    ratios: list[float] = []
-    for i in range(num_rows):
-        fy0, fy1 = i * row_h_frame, min((i + 1) * row_h_frame, fh)
-        ty0, ty1 = i * row_h_tpl, min((i + 1) * row_h_tpl, th)
-
-        f_mask = _apply_color_mask(frame[fy0:fy1], hsv_lower, hsv_upper)
-        t_mask = _apply_color_mask(tpl[ty0:ty1], hsv_lower, hsv_upper)
-
-        t_count = cv2.countNonZero(t_mask)
-        f_count = cv2.countNonZero(f_mask)
-
-        if t_count == 0:
-            ratio = 1.0
-        else:
-            ratio = min(f_count / t_count, 1.0)
-        ratios.append(ratio)
-
-    confidence = sum(ratios) / len(ratios) if ratios else 0.0
-    return CompareResult(matched=confidence >= threshold, confidence=confidence, method="per_row_pink")
 
 
 _OCR_CONFIG = "--psm 7 --oem 3"

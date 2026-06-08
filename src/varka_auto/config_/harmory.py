@@ -8,7 +8,7 @@ from typing import Optional
 
 import yaml
 
-_VALID_COMPARE_METHODS = {"template_match", "color_mask_template_match", "per_row_pink", "per_row_ocr"}
+_VALID_COMPARE_METHODS = {"template_match", "color_mask_template_match", "per_row_ocr"}
 # Default HSV range for bright pink / magenta-pink text (OpenCV H scale 0-179).
 # Calibrate actual values from capture-roi output if needed.
 _DEFAULT_HSV_LOWER = [145, 80, 100]

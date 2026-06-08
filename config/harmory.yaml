@@ -8,7 +8,7 @@ harmory:
     width: 293    # TODO
     height: 73    # TODO
   # expected_template_path: assets/harmory/expected_result.png   # chỉ cần cho template_match / per_row_pink
-  compare_method: per_row_ocr      # per_row_ocr | per_row_pink | template_match | color_mask_template_match
+  compare_method: per_row_ocr      # per_row_ocr | template_match | color_mask_template_match
   num_stat_rows: 3                 # số dòng stat trong result panel
   expected_stat_texts:             # chạy 'harmory ocr-test --char ...' để lấy text đúng, rồi điền vào đây
     []

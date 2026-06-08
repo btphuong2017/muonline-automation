@@ -76,7 +76,7 @@ harmory:
     y: 425
     width: 293
     height: 73
-  compare_method: per_row_ocr         # per_row_ocr | per_row_pink | template_match | color_mask_template_match
+  compare_method: per_row_ocr         # per_row_ocr | template_match | color_mask_template_match
   num_stat_rows: 3                    # số dòng stat trong result panel
   expected_stat_texts:                # per_row_ocr: text OCR mong muốn mỗi row
     - "Defense Increase +50"          # chạy 'harmory ocr-test' để biết đúng format
