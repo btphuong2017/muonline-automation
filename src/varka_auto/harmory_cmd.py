@@ -208,7 +208,7 @@ def ocr_test_cmd(
         raise typer.Exit(code=1)
 
     fh = frame.shape[0]
-    num_rows = len(cfg.expected_stat_texts) if cfg.expected_stat_texts else cfg.num_stat_rows
+    num_rows = cfg.num_stat_rows
     row_h = max(fh // num_rows, 1)
 
     console.print(f"\nCapturing ROI for [bold]{char}[/bold] ({fh}px height, {num_rows} rows, scale={cfg.ocr_scale}x):\n")

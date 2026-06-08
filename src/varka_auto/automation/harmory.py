@@ -56,7 +56,7 @@ def compare_roi(frame: np.ndarray, cfg: HarmoryConfig) -> CompareResult:
     if cfg.compare_method == "per_row_ocr":
         return _compare_per_row_ocr(
             frame, cfg.expected_stat_texts, cfg.threshold,
-            cfg.ocr_scale, cfg.tesseract_cmd,
+            cfg.ocr_scale, cfg.tesseract_cmd, cfg.num_stat_rows,
         )
     if cfg.compare_method == "color_mask_template_match":
         return _compare_color_mask_template_match(
@@ -295,22 +295,23 @@ def _compare_per_row_ocr(
     threshold: float,
     ocr_scale: int,
     tesseract_cmd: Optional[str],
+    num_stat_rows: int,
 ) -> CompareResult:
     import pytesseract
 
     if tesseract_cmd:
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
-    num_rows = len(expected_texts)
-    if num_rows == 0:
+    num_expected = len(expected_texts)
+    if num_expected == 0:
         return CompareResult(matched=False, confidence=0.0, method="per_row_ocr")
 
     fh = frame.shape[0]
-    row_h = max(fh // num_rows, 1)
+    row_h = max(fh // num_stat_rows, 1)
 
-    # OCR all rows first
+    # OCR all rows first (split count driven by num_stat_rows, not expected count)
     actual_texts = []
-    for i in range(num_rows):
+    for i in range(num_stat_rows):
         fy0, fy1 = i * row_h, min((i + 1) * row_h, fh)
         actual_texts.append(_ocr_strip(frame[fy0:fy1], ocr_scale))
 
@@ -322,7 +323,7 @@ def _compare_per_row_ocr(
             remaining.remove(expected)
             matches += 1
 
-    confidence = matches / num_rows
+    confidence = matches / num_expected
     return CompareResult(matched=confidence >= threshold, confidence=confidence, method="per_row_ocr")
 
 

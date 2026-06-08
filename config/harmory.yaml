@@ -13,17 +13,18 @@ harmory:
 
   # ── OCR matching ──────────────────────────────────────────────────────────────
   compare_method: per_row_ocr
+  num_stat_rows: 3    # số dòng stat trong ROI — dùng để chia dải OCR (không đổi trừ khi ROI thay đổi)
   # Chạy 'harmory ocr-test --char ...' khi game đang hiện kết quả mong muốn,
-  # copy text mỗi dòng vào expected_stat_texts bên dưới:
+  # copy những dòng CẦN match vào expected_stat_texts (có thể ít hơn num_stat_rows):
   # expected_stat_texts:
-  #   - "Defense Increase +50"    # ← thay bằng text OCR đọc được
-  #   - "Damage Reduction +50"
-  #   - "SD Ratio +5"
+  #   - "Defense Increase +50 (Max 50)"    # ← thay bằng text OCR đọc được
+  #   - "Damage Reduction Increase +50 (Max 50)"
+  #   - "SD Ratio Increase +5 (Max 5)"
   expected_stat_texts:
     - "Defense Increase +50 (Max 50)"
     - "Damage Reduction Increase +50 (Max 50)"
     - "SD Ratio Increase +5 (Max 5)"
-  threshold: 0.60    # tỉ lệ dòng phải match: 0.33=≥1 dòng, 0.60=≥2/3, 1.0=tất cả
+  threshold: 1.0    # tỉ lệ expected_stat_texts phải match: 1.0=tất cả, 0.5=nửa, v.v.
 
   # ── Timing & giới hạn ─────────────────────────────────────────────────────────
   click_delay_ms: 4000    # ms chờ sau mỗi click trước khi capture
@@ -36,4 +37,3 @@ harmory:
   # ── Tùy chọn nâng cao ────────────────────────────────────────────────────────
   # ocr_scale: 4          # upscale trước OCR; tăng lên 6 nếu text quá nhỏ
   # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"    # nếu không trong PATH
-  # num_stat_rows: 3      # dùng bởi 'ocr-test' khi expected_stat_texts chưa điền
