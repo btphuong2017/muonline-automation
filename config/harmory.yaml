@@ -21,7 +21,6 @@ harmory:
   #   - "Damage Reduction Increase +50 (Max 50)"
   #   - "SD Ratio Increase +5 (Max 5)"
   expected_stat_texts:
-    - "Defense Increase +50 (Max 50)"
     - "Damage Reduction Increase +50 (Max 50)"
     - "SD Ratio Increase +5 (Max 5)"
   threshold: 1.0    # tỉ lệ expected_stat_texts phải match: 1.0=tất cả, 0.5=nửa, v.v.
