@@ -233,6 +233,76 @@ def ocr_test_cmd(
 
 
 # ---------------------------------------------------------------------------
+# capture-expected
+# ---------------------------------------------------------------------------
+
+@harmory_app.command("capture-expected")
+def capture_expected_cmd(
+    char: str = typer.Option(..., "--char", "-n", help="Character display name"),
+    roi: str = typer.Option(..., "--roi", help="Region to capture: x,y,width,height (client area)"),
+    harmory_yaml: Path = typer.Option(Path("config/harmory.yaml"), "--config", help="Path to harmory.yaml"),
+    rows: Optional[int] = typer.Option(None, "--rows", help="Number of rows to OCR (default: num_stat_rows from config)"),
+    output_dir: Path = typer.Option(Path(".claude/logs/harmory"), "--output-dir", help="Directory to save debug PNG"),
+) -> None:
+    """Capture a custom ROI, OCR each row, and print the expected_stat_texts snippet.
+
+    Use this when the desired result is displayed at a position different from result_roi.
+    Run the command while the game shows the result you want, then copy the printed
+    YAML snippet into expected_stat_texts in config/harmory.yaml.
+    """
+    # Parse --roi argument
+    try:
+        parts = [int(v.strip()) for v in roi.split(",")]
+        if len(parts) != 4:
+            raise ValueError
+        rx, ry, rw, rh = parts
+    except ValueError:
+        console.print("[red]--roi must be four integers: x,y,width,height (e.g. 310,425,293,73)[/red]")
+        raise typer.Exit(code=1)
+
+    win = _resolve_window(char)
+    cfg = _load_cfg(harmory_yaml)
+    num_rows = rows if rows is not None else cfg.num_stat_rows
+
+    from varka_auto.automation.capture import MssBackend
+    from varka_auto.automation.focus import restore_without_focus
+    from varka_auto.automation.harmory import _ocr_strip
+
+    if cfg.tesseract_cmd:
+        import pytesseract
+        pytesseract.pytesseract.tesseract_cmd = cfg.tesseract_cmd
+
+    restore_without_focus(win.hwnd, settle_ms=300)
+
+    try:
+        frame = MssBackend().grab(win.hwnd, (rx, ry, rw, rh))
+    except Exception as exc:
+        console.print(f"[red]Capture failed: {exc}[/red]")
+        raise typer.Exit(code=1)
+
+    fh = frame.shape[0]
+    row_h = max(fh // num_rows, 1)
+
+    console.print(f"\nCaptured ROI ({rx}, {ry}, {rw}x{rh}) — {num_rows} rows:\n")
+
+    texts: list[str] = []
+    for i in range(num_rows):
+        fy0, fy1 = i * row_h, min((i + 1) * row_h, fh)
+        text = _ocr_strip(frame[fy0:fy1], cfg.ocr_scale)
+        texts.append(text)
+        console.print(f"  Row {i}: [cyan]{text!r}[/cyan]")
+
+    console.print("\nPaste vào config/harmory.yaml:")
+    console.print("  [bold]expected_stat_texts:[/bold]")
+    for text in texts:
+        console.print(f'    - [green]"{text}"[/green]')
+
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    dest = _save_png(frame, output_dir / char, f"capture_expected_{ts}.png")
+    console.print(f"\n[dim]ROI saved: {dest}[/dim]")
+
+
+# ---------------------------------------------------------------------------
 # click-test
 # ---------------------------------------------------------------------------
 
