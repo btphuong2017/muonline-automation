@@ -8,7 +8,7 @@ from typing import Optional
 
 import yaml
 
-_VALID_COMPARE_METHODS = {"template_match", "color_mask_template_match", "per_row_pink"}
+_VALID_COMPARE_METHODS = {"template_match", "color_mask_template_match", "per_row_pink", "per_row_ocr"}
 # Default HSV range for bright pink / magenta-pink text (OpenCV H scale 0-179).
 # Calibrate actual values from capture-roi output if needed.
 _DEFAULT_HSV_LOWER = [145, 80, 100]
@@ -40,7 +40,7 @@ class ResultROI:
 class HarmoryConfig:
     click_point: ClickPoint
     result_roi: ResultROI
-    expected_template_path: Path
+    expected_template_path: Optional[Path]
     compare_method: str
     threshold: float
     click_delay_ms: int
@@ -51,6 +51,9 @@ class HarmoryConfig:
     color_hsv_lower: list[int] = field(default_factory=lambda: list(_DEFAULT_HSV_LOWER))
     color_hsv_upper: list[int] = field(default_factory=lambda: list(_DEFAULT_HSV_UPPER))
     num_stat_rows: int = 3
+    expected_stat_texts: list[str] = field(default_factory=list)
+    ocr_scale: int = 4
+    tesseract_cmd: Optional[str] = None
 
 
 class HarmoryConfigError(ValueError):
@@ -96,13 +99,7 @@ def load_harmory_config(path: Path) -> HarmoryConfig:
         height=int(roi_raw["height"]),
     )
 
-    # --- expected_template_path ---
-    tpl_raw = h.get("expected_template_path")
-    if not tpl_raw:
-        raise HarmoryConfigError(f"{path}: 'harmory.expected_template_path' is required.")
-    expected_template_path = Path(str(tpl_raw))
-
-    # --- compare_method ---
+    # --- compare_method (loaded first — affects validation of other fields) ---
     compare_method = str(h.get("compare_method", "template_match"))
     if compare_method not in _VALID_COMPARE_METHODS:
         raise HarmoryConfigError(
@@ -110,12 +107,29 @@ def load_harmory_config(path: Path) -> HarmoryConfig:
             f"{sorted(_VALID_COMPARE_METHODS)}, got {compare_method!r}."
         )
 
+    # --- expected_template_path (required for non-OCR methods) ---
+    tpl_raw = h.get("expected_template_path")
+    if compare_method != "per_row_ocr":
+        if not tpl_raw:
+            raise HarmoryConfigError(f"{path}: 'harmory.expected_template_path' is required.")
+        expected_template_path: Optional[Path] = Path(str(tpl_raw))
+    else:
+        expected_template_path = Path(str(tpl_raw)) if tpl_raw else None
+
+    # --- expected_stat_texts (required for per_row_ocr, populated at runtime) ---
+    expected_stat_texts_raw = h.get("expected_stat_texts") or []
+    if not isinstance(expected_stat_texts_raw, list):
+        raise HarmoryConfigError(f"{path}: 'harmory.expected_stat_texts' must be a list of strings.")
+    expected_stat_texts = [str(t) for t in expected_stat_texts_raw]
+
     # --- numeric / optional fields ---
     threshold = float(h.get("threshold", 0.90))
     click_delay_ms = int(h.get("click_delay_ms", 3000))
     max_attempts_raw = h.get("max_attempts")
     max_attempts: Optional[int] = None if max_attempts_raw is None else int(max_attempts_raw)
     save_debug_screenshot = bool(h.get("save_debug_screenshot", True))
+    ocr_scale = int(h.get("ocr_scale", 4))
+    tesseract_cmd: Optional[str] = h.get("tesseract_cmd") or None
 
     # --- optional HSV tuning (supports both old "purple_" prefix and new "color_" prefix) ---
     hsv_lower_raw = (
@@ -158,4 +172,7 @@ def load_harmory_config(path: Path) -> HarmoryConfig:
         color_hsv_lower=[int(v) for v in hsv_lower_raw],
         color_hsv_upper=[int(v) for v in hsv_upper_raw],
         num_stat_rows=num_stat_rows,
+        expected_stat_texts=expected_stat_texts,
+        ocr_scale=ocr_scale,
+        tesseract_cmd=tesseract_cmd,
     )

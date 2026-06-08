@@ -29,6 +29,14 @@ pip install uv
 uv sync
 ```
 
+Nếu dùng `compare_method: per_row_ocr`, cần cài thêm Tesseract OCR engine:
+
+```bash
+# Windows — cài Tesseract binary
+winget install UB-Mannheim.TesseractOCR
+# Sau khi cài, thêm vào PATH hoặc set tesseract_cmd trong config/harmory.yaml
+```
+
 ---
 
 ## Cấu hình
@@ -68,16 +76,20 @@ harmory:
     y: 425
     width: 293
     height: 73
-  expected_template_path: assets/harmory/expected_result.png
-  compare_method: per_row_pink        # per_row_pink | template_match | color_mask_template_match
+  compare_method: per_row_ocr         # per_row_ocr | per_row_pink | template_match | color_mask_template_match
   num_stat_rows: 3                    # số dòng stat trong result panel
-  threshold: 0.60                     # 0.60 = chap nhan 2/3 rows pink; 0.70 = yeu cau tat ca rows pink
+  expected_stat_texts:                # per_row_ocr: text OCR mong muốn mỗi row
+    - "Defense Increase +50"          # chạy 'harmory ocr-test' để biết đúng format
+    - "Damage Reduction +50"
+    - "SD Ratio +5"
+  threshold: 0.60                     # 0.33=≥1 dòng, 0.60=≥2 dòng, 1.0=tất cả dòng
   click_delay_ms: 4000                # chờ 4s sau click trước khi capture
   max_attempts: null                  # null = retry vô hạn
   stop_hotkey: F12                    # phím dừng bot (F9-F12, Pause, ScrollLock, Insert, Delete, Escape)
   save_debug_screenshot: true
-  # color_hsv_lower: [145, 80, 100]   # tune màu hồng nếu cần
-  # color_hsv_upper: [179, 255, 255]
+  # ocr_scale: 4                      # upscale factor (tăng lên 6 nếu OCR không nhận được text)
+  # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"
+  # expected_template_path: assets/harmory/expected_result.png  # chỉ cần cho per_row_pink / template_match
 ```
 
 ### `config/templates.yaml`
@@ -198,17 +210,16 @@ Bot click 1 điểm cố định, chờ 4 giây, capture ROI, kiểm tra kết q
 
 Chỉ chạy cho **1 nhân vật** được chỉ định khi gọi lệnh.
 
-### Cơ chế phát hiện kết quả (`per_row_pink`)
+### Cơ chế phát hiện kết quả (`per_row_ocr`)
 
-Game Mu Online dùng màu chữ để biểu thị mức độ stat:
-- Màu **trắng** — mức bình thường
-- Màu **xanh dương** — mức khá
-- Màu **hồng/magenta** — đã đạt max
+Bot chia ROI thành `num_stat_rows` dải ngang (mỗi dải = 1 stat). Với mỗi dải, chạy Tesseract OCR để đọc text, sau đó so sánh với `expected_stat_texts` trong config.
 
-Bot chia ROI thành `num_stat_rows` dải ngang (mỗi dải = 1 stat), đếm pink pixel trong từng dải, so sánh với expected template. Confidence = mean của tỉ lệ pink pixel qua tất cả các dải:
+Confidence = số dòng match / tổng số dòng:
+- `threshold: 0.33` — chỉ cần ≥1 dòng đúng
+- `threshold: 0.60` — cần ≥2/3 dòng đúng
+- `threshold: 1.0` — tất cả dòng phải đúng
 
-- `threshold: 0.60` — chấp nhận 2/3 dòng pink là đủ
-- `threshold: 0.70` — yêu cầu tất cả dòng đều pink
+Ưu điểm so với phương pháp màu sắc: không bị ảnh hưởng bởi màu text hay background — chỉ đọc giá trị thực.
 
 ### Calibration (lần đầu hoặc sau khi thay đổi giao diện)
 
@@ -218,30 +229,18 @@ uv run python -m varka_auto harmory capture-roi --char PPIK
 ```
 Mở file PNG in ra, kiểm tra có đúng vùng 3 dòng text không. Nếu sai → điều chỉnh `result_roi` trong `config/harmory.yaml`.
 
-**Bước 2** — Capture expected template (khi 3 dòng text đang hiện trên màn hình):
+**Bước 2** — Lấy text OCR của kết quả mong muốn:
 ```bash
-uv run python -m varka_auto harmory capture-roi --char PPIK
-# Copy file PNG ra thành expected template:
-copy ".claude\logs\harmory\PPIK\roi_YYYYMMDD_HHMMSS.png" "assets\harmory\expected_result.png"
+# Khi game đang hiển thị kết quả mong muốn (tất cả stats đúng):
+uv run python -m varka_auto harmory ocr-test --char PPIK
 ```
+Output sẽ in text mỗi dòng. Copy những dòng đó vào `expected_stat_texts` trong `config/harmory.yaml`.
 
-**Bước 3** — Xác nhận confidence đạt threshold:
+**Bước 3** — Xác nhận so sánh đúng:
 ```bash
-# Khi 3 dòng text đang hiện (tất cả stats maxed):
-uv run python -m varka_auto harmory compare --char PPIK
-# → phải in PASS với confidence >= threshold (mặc định 0.60)
-```
-
-Có thể test offline không cần game (dùng hai ảnh trong `assets/harmory/`):
-```bash
-.venv\Scripts\python.exe -c "
-import cv2, sys; sys.path.insert(0, 'src')
-from pathlib import Path
-from varka_auto.automation.harmory import _compare_per_row_pink
-tpl = Path('assets/harmory/expected_result.png')
-r = _compare_per_row_pink(cv2.imread(str(tpl)), tpl, 0.60, [145,80,100], [179,255,255], 3)
-print('confidence:', r.confidence, 'matched:', r.matched)
-"
+# Khi game đang hiển thị kết quả mong muốn:
+uv run python -m varka_auto harmory ocr-test --char PPIK
+# → phải in PASS với confidence >= threshold
 ```
 
 **Bước 4** — Test click đúng điểm:

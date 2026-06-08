@@ -106,11 +106,11 @@ def capture_roi_cmd(
     console.print(f"[green]ROI captured:[/green] {dest}")
     console.print(f"Dimensions: {w}x{h} px")
     console.print(f"ROI config: x={cfg.result_roi.x} y={cfg.result_roi.y} w={cfg.result_roi.width} h={cfg.result_roi.height}")
-    tpl = cfg.expected_template_path
-    console.print(
-        f"[dim]Tip: copy file nay thanh {tpl.stem}.png (ordering chinh), "
-        f"{tpl.stem}_B.png (ordering khac), ... neu 3 dong xuat hien theo thu tu khac nhau.[/dim]"
-    )
+    if cfg.expected_template_path is not None:
+        tpl = cfg.expected_template_path
+        console.print(
+            f"[dim]Tip: copy file nay thanh {tpl.stem}.png lam expected template.[/dim]"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -123,13 +123,18 @@ def compare_cmd(
     harmory_yaml: Path = typer.Option(Path("config/harmory.yaml"), "--config", help="Path to harmory.yaml"),
     output_dir: Path = typer.Option(Path(".claude/logs/harmory"), "--output-dir", help="Directory to save debug PNG on fail"),
 ) -> None:
-    """Capture ROI and compare with expected template. Prints confidence and pass/fail."""
+    """Capture ROI and compare with expected template or OCR texts. Prints confidence and pass/fail."""
     win = _resolve_window(char)
     cfg = _load_cfg(harmory_yaml)
 
-    if not cfg.expected_template_path.exists():
-        console.print(f"[red]Expected template not found: {cfg.expected_template_path}[/red]")
-        console.print("Run 'harmory capture-roi' when the expected result is on screen, then copy/rename that PNG to the template path.")
+    if cfg.compare_method != "per_row_ocr":
+        if cfg.expected_template_path is None or not cfg.expected_template_path.exists():
+            console.print(f"[red]Expected template not found: {cfg.expected_template_path}[/red]")
+            console.print("Run 'harmory capture-roi' when the expected result is on screen, then copy/rename that PNG to the template path.")
+            raise typer.Exit(code=1)
+    elif not cfg.expected_stat_texts:
+        console.print("[red]expected_stat_texts is empty in config.[/red]")
+        console.print("Run 'harmory ocr-test --char ...' to see what OCR reads, then fill expected_stat_texts in config/harmory.yaml.")
         raise typer.Exit(code=1)
 
     from varka_auto.automation.focus import restore_without_focus
@@ -157,6 +162,74 @@ def compare_cmd(
         console.print(f"[yellow]Debug ROI saved:[/yellow] {dest}")
 
     raise typer.Exit(code=0 if result.matched else 1)
+
+
+# ---------------------------------------------------------------------------
+# ocr-test
+# ---------------------------------------------------------------------------
+
+@harmory_app.command("ocr-test")
+def ocr_test_cmd(
+    char: str = typer.Option(..., "--char", "-n", help="Character display name"),
+    harmory_yaml: Path = typer.Option(Path("config/harmory.yaml"), "--config", help="Path to harmory.yaml"),
+    output_dir: Path = typer.Option(Path(".claude/logs/harmory"), "--output-dir", help="Directory to save debug PNG"),
+) -> None:
+    """Capture ROI and print OCR text per row. Use output to configure expected_stat_texts."""
+    win = _resolve_window(char)
+    cfg = _load_cfg(harmory_yaml)
+
+    from varka_auto.automation.focus import restore_without_focus
+    from varka_auto.automation.harmory import capture_roi, _ocr_strip
+
+    if cfg.tesseract_cmd:
+        import pytesseract
+        pytesseract.pytesseract.tesseract_cmd = cfg.tesseract_cmd
+
+    restore_without_focus(win.hwnd, settle_ms=300)
+
+    try:
+        frame = capture_roi(win.hwnd, cfg)
+    except RuntimeError as exc:
+        console.print(f"[red]Capture failed: {exc}[/red]")
+        raise typer.Exit(code=1)
+
+    fh = frame.shape[0]
+    num_rows = cfg.num_stat_rows
+    row_h = max(fh // num_rows, 1)
+
+    console.print(f"\nCapturing ROI for [bold]{char}[/bold] ({fh}px height, {num_rows} rows, scale={cfg.ocr_scale}x):\n")
+
+    row_texts: list[str] = []
+    for i in range(num_rows):
+        fy0, fy1 = i * row_h, min((i + 1) * row_h, fh)
+        text = _ocr_strip(frame[fy0:fy1], cfg.ocr_scale)
+        row_texts.append(text)
+        console.print(f"  Row {i}: [cyan]{text!r}[/cyan]")
+
+    if cfg.expected_stat_texts:
+        console.print(f"\nComparison (threshold={cfg.threshold:.2f}):")
+        matches = 0
+        for i in range(num_rows):
+            actual = row_texts[i] if i < len(row_texts) else ""
+            expected = cfg.expected_stat_texts[i] if i < len(cfg.expected_stat_texts) else ""
+            ok = bool(actual and actual == expected)
+            if ok:
+                matches += 1
+            mark = "[green]MATCH[/green]" if ok else "[red]MISMATCH[/red]"
+            console.print(f"  Row {i}: {actual!r}  vs  {expected!r}  -> {mark}")
+        confidence = matches / num_rows
+        passed = confidence >= cfg.threshold
+        result_str = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+        console.print(f"\nConfidence: {confidence:.4f} (threshold={cfg.threshold:.4f}) -> {result_str}")
+    else:
+        console.print("\n[dim]No expected_stat_texts configured. Add to config/harmory.yaml:[/dim]")
+        console.print("[dim]expected_stat_texts:[/dim]")
+        for text in row_texts:
+            console.print(f"[dim]  - {text!r}[/dim]")
+
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    dest = _save_png(frame, output_dir / char, f"ocr_test_{ts}.png")
+    console.print(f"\n[dim]ROI saved: {dest}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -205,9 +278,14 @@ def run_cmd(
     win = _resolve_window(char)
     cfg = _load_cfg(harmory_yaml)
 
-    if not cfg.expected_template_path.exists():
-        console.print(f"[red]Expected template not found: {cfg.expected_template_path}[/red]")
-        console.print("Run 'harmory capture-roi' when the expected result is on screen, then copy/rename that PNG to the template path.")
+    if cfg.compare_method != "per_row_ocr":
+        if cfg.expected_template_path is None or not cfg.expected_template_path.exists():
+            console.print(f"[red]Expected template not found: {cfg.expected_template_path}[/red]")
+            console.print("Run 'harmory capture-roi' when the expected result is on screen, then copy/rename that PNG to the template path.")
+            raise typer.Exit(code=1)
+    elif not cfg.expected_stat_texts:
+        console.print("[red]expected_stat_texts is empty in config.[/red]")
+        console.print("Run 'harmory ocr-test --char ...' to see what OCR reads, then fill expected_stat_texts in config/harmory.yaml.")
         raise typer.Exit(code=1)
 
     # Override max_attempts from CLI if provided
@@ -228,7 +306,7 @@ def run_cmd(
         "last_error": "",
     }
 
-    best_capture_dir = cfg.expected_template_path.parent  # assets/harmory/
+    best_capture_dir = cfg.expected_template_path.parent if cfg.expected_template_path else Path("assets/harmory")
 
     def _on_attempt(attempt: int, result, frame) -> None:
         import numpy as np

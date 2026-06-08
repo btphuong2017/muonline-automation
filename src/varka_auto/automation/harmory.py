@@ -52,7 +52,12 @@ def capture_roi(hwnd: int, cfg: HarmoryConfig) -> np.ndarray:
 
 
 def compare_roi(frame: np.ndarray, cfg: HarmoryConfig) -> CompareResult:
-    """Compare frame against cfg.expected_template_path using cfg.compare_method."""
+    """Compare frame against expected result using cfg.compare_method."""
+    if cfg.compare_method == "per_row_ocr":
+        return _compare_per_row_ocr(
+            frame, cfg.expected_stat_texts, cfg.threshold,
+            cfg.ocr_scale, cfg.tesseract_cmd,
+        )
     if cfg.compare_method == "color_mask_template_match":
         return _compare_color_mask_template_match(
             frame, cfg.expected_template_path, cfg.threshold,
@@ -301,6 +306,53 @@ def _compare_per_row_pink(
 
     confidence = sum(ratios) / len(ratios) if ratios else 0.0
     return CompareResult(matched=confidence >= threshold, confidence=confidence, method="per_row_pink")
+
+
+_OCR_CONFIG = "--psm 7 --oem 3"
+
+
+def _ocr_strip(strip: np.ndarray, scale: int) -> str:
+    """Upscale a row strip, binarize it, and run Tesseract OCR. Returns stripped text."""
+    import cv2
+    import pytesseract
+
+    gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    if h == 0 or w == 0:
+        return ""
+    big = cv2.resize(gray, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
+    _, binary = cv2.threshold(big, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return pytesseract.image_to_string(binary, config=_OCR_CONFIG).strip()
+
+
+def _compare_per_row_ocr(
+    frame: np.ndarray,
+    expected_texts: list[str],
+    threshold: float,
+    ocr_scale: int,
+    tesseract_cmd: Optional[str],
+) -> CompareResult:
+    import pytesseract
+
+    if tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+    num_rows = len(expected_texts)
+    if num_rows == 0:
+        return CompareResult(matched=False, confidence=0.0, method="per_row_ocr")
+
+    fh = frame.shape[0]
+    row_h = max(fh // num_rows, 1)
+
+    matches = 0
+    for i, expected in enumerate(expected_texts):
+        fy0, fy1 = i * row_h, min((i + 1) * row_h, fh)
+        actual = _ocr_strip(frame[fy0:fy1], ocr_scale)
+        if actual and actual == expected:
+            matches += 1
+
+    confidence = matches / num_rows
+    return CompareResult(matched=confidence >= threshold, confidence=confidence, method="per_row_ocr")
 
 
 def _validate_window(hwnd: int, cfg: HarmoryConfig) -> None:
