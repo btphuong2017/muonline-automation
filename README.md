@@ -3,7 +3,7 @@
 Bot tự động hóa hai tính năng trong Mu Online trên Windows:
 
 - **Varka Auto** — chạy event Imperial Guardian tự động cho nhiều nhân vật xen kẽ
-- **Harmory Auto** — click cố định, capture vùng kết quả, so sánh với expected template, lặp cho tới khi match
+- **Harmory Auto** — click cố định, capture vùng kết quả, so sánh bằng OCR, lặp cho tới khi match
 
 Bot sử dụng screenshot + template matching + Windows input API để thao tác giao diện game.
 Không đọc memory game, không chỉnh packet, không can thiệp vào game client.
@@ -77,19 +77,17 @@ harmory:
     width: 293
     height: 73
   compare_method: per_row_ocr         # per_row_ocr | template_match | color_mask_template_match
-  num_stat_rows: 3                    # số dòng stat trong result panel
-  expected_stat_texts:                # per_row_ocr: text OCR mong muốn mỗi row
-    - "Defense Increase +50"          # chạy 'harmory ocr-test' để biết đúng format
+  expected_stat_texts:                # chạy 'harmory ocr-test' để lấy text đúng, điền vào đây
+    - "Defense Increase +50"
     - "Damage Reduction +50"
     - "SD Ratio +5"
-  threshold: 0.60                     # 0.33=≥1 dòng, 0.60=≥2 dòng, 1.0=tất cả dòng
-  click_delay_ms: 4000                # chờ 4s sau click trước khi capture
+  threshold: 0.60                     # 0.33=≥1 dòng, 0.60=≥2/3, 1.0=tất cả dòng
+  click_delay_ms: 4000                # ms chờ sau click trước khi capture
   max_attempts: null                  # null = retry vô hạn
-  stop_hotkey: F12                    # phím dừng bot (F9-F12, Pause, ScrollLock, Insert, Delete, Escape)
+  stop_hotkey: F12                    # F9-F12, Pause, ScrollLock, Insert, Delete, Escape
   save_debug_screenshot: true
-  # ocr_scale: 4                      # upscale factor (tăng lên 6 nếu OCR không nhận được text)
-  # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"
-  # expected_template_path: assets/harmory/expected_result.png  # chỉ cần cho per_row_pink / template_match
+  # ocr_scale: 4                      # upscale trước OCR; tăng lên 6 nếu text quá nhỏ
+  # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"  # nếu không trong PATH
 ```
 
 ### `config/templates.yaml`
@@ -212,7 +210,7 @@ Chỉ chạy cho **1 nhân vật** được chỉ định khi gọi lệnh.
 
 ### Cơ chế phát hiện kết quả (`per_row_ocr`)
 
-Bot chia ROI thành `num_stat_rows` dải ngang (mỗi dải = 1 stat). Với mỗi dải, chạy Tesseract OCR để đọc text, sau đó so sánh với `expected_stat_texts` trong config.
+Bot chia ROI thành số dải bằng `len(expected_stat_texts)` (mỗi dải = 1 stat). Với mỗi dải, chạy Tesseract OCR để đọc text, sau đó so sánh với `expected_stat_texts` trong config.
 
 Confidence = số dòng match / tổng số dòng:
 - `threshold: 0.33` — chỉ cần ≥1 dòng đúng
@@ -236,10 +234,9 @@ uv run python -m varka_auto harmory ocr-test --char PPIK
 ```
 Output sẽ in text mỗi dòng. Copy những dòng đó vào `expected_stat_texts` trong `config/harmory.yaml`.
 
-**Bước 3** — Xác nhận so sánh đúng:
+**Bước 3** — Sau khi điền `expected_stat_texts`, xác nhận so sánh đúng:
 ```bash
-# Khi game đang hiển thị kết quả mong muốn:
-uv run python -m varka_auto harmory ocr-test --char PPIK
+uv run python -m varka_auto harmory compare --char PPIK
 # → phải in PASS với confidence >= threshold
 ```
 
