@@ -266,6 +266,11 @@ def _match_arrays(
 
 _OCR_CONFIG = "--psm 7 --oem 3"
 
+# Known character misreadings for this game's font — add more as discovered.
+_OCR_SUBSTITUTIONS: dict[str, str] = {
+    "§": "5",   # digit 5 misread as section sign
+}
+
 
 def _ocr_strip(strip: np.ndarray, scale: int) -> str:
     """Upscale a row strip, binarize it, and run Tesseract OCR. Returns stripped text."""
@@ -278,7 +283,10 @@ def _ocr_strip(strip: np.ndarray, scale: int) -> str:
         return ""
     big = cv2.resize(gray, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
     _, binary = cv2.threshold(big, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return pytesseract.image_to_string(binary, config=_OCR_CONFIG).strip()
+    text = pytesseract.image_to_string(binary, config=_OCR_CONFIG).strip()
+    for bad, good in _OCR_SUBSTITUTIONS.items():
+        text = text.replace(bad, good)
+    return text
 
 
 def _compare_per_row_ocr(
