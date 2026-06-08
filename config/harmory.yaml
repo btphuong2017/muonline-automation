@@ -1,21 +1,36 @@
 harmory:
+  # ── Điểm click (client area, tính từ góc trên-trái cửa sổ game) ──────────────
   click_point:
-    x: 580        # TODO: thay bằng tọa độ thực (client area, tính từ góc trên-trái cửa sổ game)
+    x: 580    # TODO: thay bằng tọa độ thực
     y: 336
+
+  # ── Vùng capture kết quả ─────────────────────────────────────────────────────
   result_roi:
-    x: 310        # TODO
-    y: 425
+    x: 310    # TODO
+    y: 425    # TODO
     width: 293    # TODO
     height: 73    # TODO
-  # expected_template_path: assets/harmory/expected_result.png   # chỉ cần cho template_match / per_row_pink
-  compare_method: per_row_ocr      # per_row_ocr | template_match | color_mask_template_match
-  num_stat_rows: 3                 # số dòng stat trong result panel
-  expected_stat_texts:             # chạy 'harmory ocr-test --char ...' để lấy text đúng, rồi điền vào đây
-    []
-  threshold: 0.60                  # 0.33=≥1 dòng, 0.60=≥2 dòng, 1.0=tất cả dòng
-  click_delay_ms: 4000             # chờ 4 giây sau click trước khi capture
-  max_attempts: null               # null = retry vô hạn cho tới khi match hoặc user stop
-  stop_hotkey: F12                 # phím dừng bot (F9-F12, Pause, ScrollLock, Insert, Delete, Escape)
-  save_debug_screenshot: true
-  # ocr_scale: 4                   # upscale factor trước khi OCR (tăng lên 6 nếu font quá nhỏ)
-  # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"   # nếu tesseract không trong PATH
+
+  # ── OCR matching ──────────────────────────────────────────────────────────────
+  compare_method: per_row_ocr
+  # Chạy 'harmory ocr-test --char ...' khi game đang hiện kết quả mong muốn,
+  # copy text mỗi dòng vào expected_stat_texts bên dưới:
+  # expected_stat_texts:
+  #   - "Defense Increase +50"    # ← thay bằng text OCR đọc được
+  #   - "Damage Reduction +50"
+  #   - "SD Ratio +5"
+  expected_stat_texts: []
+  threshold: 0.60    # tỉ lệ dòng phải match: 0.33=≥1 dòng, 0.60=≥2/3, 1.0=tất cả
+
+  # ── Timing & giới hạn ─────────────────────────────────────────────────────────
+  click_delay_ms: 4000    # ms chờ sau mỗi click trước khi capture
+  max_attempts: null      # null = không giới hạn
+
+  # ── Điều khiển ────────────────────────────────────────────────────────────────
+  stop_hotkey: F12        # F9-F12, Pause, ScrollLock, Insert, Delete, Escape
+  save_debug_screenshot: true    # lưu ảnh khi match (vào .claude/logs/harmory/)
+
+  # ── Tùy chọn nâng cao ────────────────────────────────────────────────────────
+  # ocr_scale: 4          # upscale trước OCR; tăng lên 6 nếu text quá nhỏ
+  # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"    # nếu không trong PATH
+  # num_stat_rows: 3      # dùng bởi 'ocr-test' khi expected_stat_texts chưa điền
