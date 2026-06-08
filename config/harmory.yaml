@@ -19,7 +19,10 @@ harmory:
   #   - "Defense Increase +50"    # ← thay bằng text OCR đọc được
   #   - "Damage Reduction +50"
   #   - "SD Ratio +5"
-  expected_stat_texts: []
+  expected_stat_texts:
+    - "Defense Increase +50 (Max 50)"
+    - "Damage Reduction Increase +50 (Max 50)"
+    - "SD Ratio Increase +5 (Max 5)"
   threshold: 0.60    # tỉ lệ dòng phải match: 0.33=≥1 dòng, 0.60=≥2/3, 1.0=tất cả
 
   # ── Timing & giới hạn ─────────────────────────────────────────────────────────
