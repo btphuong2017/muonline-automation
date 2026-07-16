@@ -101,6 +101,7 @@ def test_no_click_stops_at_popup1(mock_backend):
 
     report = handle_popups(0, detector, mock_backend, no_click=True)
 
+    assert report.result == PopupClickResult.DETECT_ONLY
     assert report.popup1_status is not None
     assert report.popup1_status.popup1_found is True
     mock_backend.click.assert_not_called()

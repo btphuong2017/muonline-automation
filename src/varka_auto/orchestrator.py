@@ -50,7 +50,6 @@ class CharStatus(Enum):
     DONE_BY_GAME_LIMIT = "done_by_game_limit"
     SKIPPED_ERROR      = "skipped_error"
     NEED_USER_LOGIN    = "need_user_login"
-    DISABLED           = "disabled"
 
 
 _ACTIVE = {CharStatus.RUNNING, CharStatus.RETRY_LATER}
@@ -59,7 +58,6 @@ _TERMINAL = {
     CharStatus.DONE_BY_GAME_LIMIT,
     CharStatus.SKIPPED_ERROR,
     CharStatus.NEED_USER_LOGIN,
-    CharStatus.DISABLED,
 }
 
 
@@ -71,16 +69,18 @@ class CharacterRuntime:
     current_state: VarkaState = VarkaState.ENTER_LOBBY
     completed_count: int = 0
     retry_count: int = 3
+    cooldown_cycles: int = 0
     status: CharStatus = CharStatus.RUNNING
     next_check_at: float = field(default_factory=time.monotonic)
     last_error: str = ""
 
 
 class Orchestrator:
-    MAX_RETRIES   = 3
-    RETRY_DELAY_S = 2.0
-    COOLDOWN_S    = 30.0
-    WAIT_POLL_S   = 5.0   # interval between completion checks while in event
+    MAX_RETRIES         = 3
+    RETRY_DELAY_S       = 2.0
+    COOLDOWN_S          = 30.0
+    WAIT_POLL_S         = 5.0   # interval between completion checks while in event
+    MAX_COOLDOWN_CYCLES = 5     # give up on a char after this many RETRY_LATER rounds
 
     def __init__(
         self,
@@ -116,7 +116,14 @@ class Orchestrator:
         if not self.dry_run:
             self._log_event("[cyan]Detecting initial state...[/cyan]")
             for char in self.chars:
-                detected = self._detect_state(char)
+                if not self._check_window_alive(char):
+                    continue
+                try:
+                    detected = self._detect_state(char)
+                except Exception as exc:
+                    detected = VarkaState.ENTER_LOBBY
+                    self._log_event(f"[yellow]{char.name}: initial state detection failed "
+                                    f"({exc}) — defaulting to {detected.value}[/yellow]")
                 char.current_state = detected
                 self._log_event(f"  {char.name}: {detected.value}")
 
@@ -159,16 +166,28 @@ class Orchestrator:
                     continue
 
                 for char in ready:
+                    if not self.dry_run and not self._check_window_alive(char):
+                        continue
+
                     if char.status == CharStatus.RETRY_LATER and not self.dry_run:
                         char.status = CharStatus.RUNNING
-                        char.current_state = self._detect_state(char)
+                        try:
+                            char.current_state = self._detect_state(char)
+                        except Exception as exc:
+                            self._on_failure(char, f"re-detect failed: {exc}")
+                            continue
                         self._log_event(f"[dim]{char.name}: cooldown done, "
                                         f"re-detected -> {char.current_state.value}[/dim]")
 
                     if self.dry_run:
                         self._dry_step(char)
                     else:
-                        self._real_step(char)
+                        try:
+                            self._real_step(char)
+                        except Exception as exc:
+                            # Isolate per-char failures — one broken window must
+                            # not kill the whole session.
+                            self._on_failure(char, f"unexpected error: {exc}")
 
                     if char.status == CharStatus.NEED_USER_LOGIN:
                         self._log_event(f"[red]FATAL: {char.name} needs user login — stopping all.[/red]")
@@ -304,6 +323,7 @@ class Orchestrator:
     def _on_success(self, char: CharacterRuntime) -> None:
         char.status = CharStatus.RUNNING
         char.retry_count = self.MAX_RETRIES
+        char.cooldown_cycles = 0
         char.last_error = ""
         if char.current_state == VarkaState.WAIT_COMPLETION:
             char.completed_count += 1
@@ -323,8 +343,15 @@ class Orchestrator:
                             f"({err}) — retry {self.MAX_RETRIES - char.retry_count + 1}/{self.MAX_RETRIES}[/yellow]")
             char.next_check_at = time.monotonic() + self.RETRY_DELAY_S
         else:
+            char.cooldown_cycles += 1
+            if char.cooldown_cycles >= self.MAX_COOLDOWN_CYCLES:
+                char.status = CharStatus.SKIPPED_ERROR
+                self._log_event(f"[red]{char.name}: gave up after {char.cooldown_cycles} "
+                                f"cooldown cycles ({err}) — SKIPPED_ERROR[/red]")
+                return
             self._log_event(f"[red]{char.name}: {char.current_state.value} failed after "
-                            f"{self.MAX_RETRIES} retries ({err}) — RETRY_LATER ({self.COOLDOWN_S}s)[/red]")
+                            f"{self.MAX_RETRIES} retries ({err}) — RETRY_LATER ({self.COOLDOWN_S}s, "
+                            f"cycle {char.cooldown_cycles}/{self.MAX_COOLDOWN_CYCLES})[/red]")
             char.status = CharStatus.RETRY_LATER
             char.retry_count = self.MAX_RETRIES
             char.next_check_at = time.monotonic() + self.COOLDOWN_S
@@ -332,6 +359,18 @@ class Orchestrator:
     # ------------------------------------------------------------------
     # State detection
     # ------------------------------------------------------------------
+
+    def _check_window_alive(self, char: CharacterRuntime) -> bool:
+        """Mark char SKIPPED_ERROR and return False if its game window is gone."""
+        if sys.platform != "win32" or self.dry_run:
+            return True
+        import win32gui
+        if win32gui.IsWindow(char.hwnd):
+            return True
+        char.status = CharStatus.SKIPPED_ERROR
+        char.last_error = "game window closed"
+        self._log_event(f"[red]{char.name}: game window closed — SKIPPED_ERROR[/red]")
+        return False
 
     def _detect_state(self, char: CharacterRuntime) -> VarkaState:
         """Snapshot current game state and return the appropriate VarkaState."""
@@ -407,7 +446,6 @@ class Orchestrator:
             CharStatus.DONE_BY_GAME_LIMIT: "blue",
             CharStatus.SKIPPED_ERROR:      "red",
             CharStatus.NEED_USER_LOGIN:    "red bold",
-            CharStatus.DISABLED:           "dim",
         }
         title = ("Varka Orchestrator [yellow blink]⏸ PAUSED[/yellow blink]"
                  if self._paused else "Varka Orchestrator")
@@ -422,12 +460,15 @@ class Orchestrator:
         for char in self.chars:
             style = _STATUS_STYLE.get(char.status, "")
             runs = f"{char.completed_count}/{char.max_runs}"
+            retries = str(char.retry_count)
+            if char.cooldown_cycles:
+                retries += f" (cd {char.cooldown_cycles}/{self.MAX_COOLDOWN_CYCLES})"
             table.add_row(
                 char.name,
                 char.current_state.value,
                 runs,
                 f"[{style}]{char.status.value}[/{style}]",
-                str(char.retry_count),
+                retries,
                 char.last_error[:60] if char.last_error else "",
             )
         return table

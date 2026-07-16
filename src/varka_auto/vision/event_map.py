@@ -50,7 +50,10 @@ def _client_size(hwnd: int) -> tuple[int, int]:
     if sys.platform != "win32":
         return 800, 600
     import win32gui
-    l, t, r, b = win32gui.GetClientRect(hwnd)
+    try:
+        l, t, r, b = win32gui.GetClientRect(hwnd)
+    except Exception as exc:
+        raise RuntimeError(f"GetClientRect failed for hwnd={hwnd} (window closed?): {exc}") from exc
     return r - l, b - t
 
 

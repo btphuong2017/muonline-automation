@@ -289,3 +289,244 @@ def test_detect_state_run_event_when_helper_stopped():
     }
 
     assert orch._detect_state(char) == VarkaState.RUN_EVENT
+
+
+# ---------------------------------------------------------------------------
+# _detect_state: popup1 / lobby / fallback branches
+# ---------------------------------------------------------------------------
+
+def _seed_detectors(orch, *, popup1=False, lobby_ready=False):
+    from varka_auto.vision.event_map import EventMapStatus
+    from varka_auto.vision.popups import PopupStatus
+    from varka_auto.vision.lobby import LobbyStatus
+
+    mock_ev, mock_popups, mock_lobby = MagicMock(), MagicMock(), MagicMock()
+    mock_ev.check.return_value = EventMapStatus()  # not in event map
+
+    popup_status = PopupStatus()
+    popup_status.popup1_found = popup1
+    mock_popups.check.return_value = popup_status
+
+    mock_lobby.check.return_value = LobbyStatus(ready=lobby_ready)
+
+    orch._detectors[0] = {
+        "event_map": mock_ev,
+        "popups": mock_popups,
+        "lobby": mock_lobby,
+    }
+
+
+def test_detect_state_popup1_branch():
+    char = _char()
+    orch = Orchestrator([char], dry_run=False)
+    _seed_detectors(orch, popup1=True)
+    assert orch._detect_state(char) == VarkaState.HANDLE_POPUPS
+
+
+def test_detect_state_lobby_branch():
+    char = _char()
+    orch = Orchestrator([char], dry_run=False)
+    _seed_detectors(orch, lobby_ready=True)
+    assert orch._detect_state(char) == VarkaState.CLICK_NPC
+
+
+def test_detect_state_fallback_enter_lobby():
+    char = _char()
+    orch = Orchestrator([char], dry_run=False)
+    _seed_detectors(orch)
+    assert orch._detect_state(char) == VarkaState.ENTER_LOBBY
+
+
+# ---------------------------------------------------------------------------
+# Real-run step result mapping (automation functions monkeypatched)
+# ---------------------------------------------------------------------------
+
+def _report(result):
+    from types import SimpleNamespace
+    return SimpleNamespace(result=result)
+
+
+def _mock_det():
+    return {
+        "ev_window": MagicMock(), "lobby": MagicMock(), "npc_finder": MagicMock(),
+        "capture": MagicMock(), "templates": MagicMock(), "popups": MagicMock(),
+        "event_map": MagicMock(),
+    }
+
+
+def test_step_handle_popups_daily_limit(monkeypatch):
+    from varka_auto.automation.popup_click import PopupClickResult
+
+    char = _char(max_runs=10)
+    char.current_state = VarkaState.HANDLE_POPUPS
+    orch = Orchestrator([char], dry_run=False)
+
+    monkeypatch.setattr("varka_auto.automation.popup_click.handle_popups",
+                        lambda *a, **kw: _report(PopupClickResult.DAILY_LIMIT))
+    orch._step_handle_popups(char, _mock_det())
+
+    assert char.status == CharStatus.DONE_BY_GAME_LIMIT
+    assert char.completed_count == char.max_runs
+
+
+@pytest.mark.parametrize("state,module,func,enum_cls", [
+    (VarkaState.ENTER_LOBBY, "varka_auto.automation.enter_lobby", "enter_lobby", "EnterLobbyResult"),
+    (VarkaState.CLICK_NPC, "varka_auto.automation.npc_click", "click_npc", "NpcClickResult"),
+    (VarkaState.HANDLE_POPUPS, "varka_auto.automation.popup_click", "handle_popups", "PopupClickResult"),
+    (VarkaState.RUN_EVENT, "varka_auto.automation.event_helper", "enter_and_activate", "ActivateResult"),
+    (VarkaState.WAIT_COMPLETION, "varka_auto.automation.event_helper", "check_completion_tick", "CompletionCheckResult"),
+])
+def test_step_aborted_maps_to_need_user_login(monkeypatch, state, module, func, enum_cls):
+    import importlib
+    mod = importlib.import_module(module)
+    aborted = getattr(mod, enum_cls).ABORTED_BY_USER
+
+    char = _char(max_runs=10)
+    char.current_state = state
+    orch = Orchestrator([char], dry_run=False)
+
+    monkeypatch.setattr(mod, func, lambda *a, **kw: _report(aborted))
+    orch._real_step(char)
+
+    assert char.status == CharStatus.NEED_USER_LOGIN
+
+
+# ---------------------------------------------------------------------------
+# Failure isolation, cooldown cap, dead-window handling
+# ---------------------------------------------------------------------------
+
+def _quiet_hotkeys(monkeypatch):
+    """Neutralise Win32 globals so run(dry_run=False) is deterministic in tests."""
+    import win32api
+    monkeypatch.setattr(win32api, "GetAsyncKeyState", lambda vk: 0)
+
+
+def test_max_cooldown_cycles_gives_up():
+    char = _char()
+    orch = Orchestrator([char], dry_run=True)
+
+    for cycle in range(Orchestrator.MAX_COOLDOWN_CYCLES):
+        char.status = CharStatus.RUNNING
+        for _ in range(Orchestrator.MAX_RETRIES):
+            orch._on_failure(char, "boom")
+
+    assert char.status == CharStatus.SKIPPED_ERROR
+    assert char.cooldown_cycles == Orchestrator.MAX_COOLDOWN_CYCLES
+
+
+def test_on_success_resets_cooldown_cycles():
+    char = _char(max_runs=10)
+    orch = Orchestrator([char], dry_run=True)
+    char.cooldown_cycles = 3
+
+    orch._on_success(char)
+    assert char.cooldown_cycles == 0
+
+
+def test_check_window_alive_marks_skipped_error():
+    import win32gui
+    char = _char()  # hwnd=0 — never a valid window
+    orch = Orchestrator([char], dry_run=False)
+
+    assert win32gui.IsWindow(0) == 0
+    assert orch._check_window_alive(char) is False
+    assert char.status == CharStatus.SKIPPED_ERROR
+    assert char.last_error == "game window closed"
+
+
+def test_dead_window_does_not_kill_session(monkeypatch):
+    import win32gui
+    _quiet_hotkeys(monkeypatch)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda h: h == 5)
+
+    dead = CharacterRuntime(name="Dead", hwnd=0, max_runs=1)
+    alive = CharacterRuntime(name="Alive", hwnd=5, max_runs=1)
+    orch = Orchestrator([dead, alive], dry_run=False)
+
+    orch._detect_state = lambda c: VarkaState.ENTER_LOBBY
+
+    def fake_step(c):
+        c.status = CharStatus.DONE_MAX_RUNS
+
+    orch._real_step = fake_step
+    orch.run()  # must terminate without raising
+
+    assert dead.status == CharStatus.SKIPPED_ERROR
+    assert alive.status == CharStatus.DONE_MAX_RUNS
+
+
+def test_step_exception_is_isolated(monkeypatch):
+    import win32gui
+    _quiet_hotkeys(monkeypatch)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda h: True)
+
+    char = _char(max_runs=1)
+    orch = Orchestrator([char], dry_run=False)
+    orch.RETRY_DELAY_S = 0.0
+    orch.COOLDOWN_S = 0.0
+
+    orch._detect_state = lambda c: VarkaState.ENTER_LOBBY
+
+    def exploding_step(c):
+        raise ValueError("simulated crash")
+
+    orch._real_step = exploding_step
+    orch.run()  # must terminate without raising
+
+    assert char.status == CharStatus.SKIPPED_ERROR
+    assert "simulated crash" in char.last_error
+
+
+def test_initial_detect_failure_defaults_to_enter_lobby(monkeypatch):
+    import win32gui
+    _quiet_hotkeys(monkeypatch)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda h: True)
+
+    char = _char(max_runs=1)
+    char.current_state = VarkaState.RUN_EVENT  # anything but the default
+    orch = Orchestrator([char], dry_run=False)
+
+    def exploding_detect(c):
+        raise RuntimeError("no frame")
+
+    orch._detect_state = exploding_detect
+    seen_states = []
+
+    def fake_step(c):
+        seen_states.append(c.current_state)
+        c.status = CharStatus.DONE_MAX_RUNS
+
+    orch._real_step = fake_step
+    orch.run()
+
+    assert seen_states == [VarkaState.ENTER_LOBBY]
+
+
+def test_cooldown_redetect_runs_in_real_mode(monkeypatch):
+    import win32gui
+    _quiet_hotkeys(monkeypatch)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda h: True)
+
+    char = _char(max_runs=1)
+    char.status = CharStatus.RETRY_LATER
+    char.next_check_at = time.monotonic() - 1.0
+    orch = Orchestrator([char], dry_run=False)
+
+    detect_calls = []
+
+    def fake_detect(c):
+        detect_calls.append(c.name)
+        return VarkaState.CLICK_NPC
+
+    orch._detect_state = fake_detect
+
+    def fake_step(c):
+        c.status = CharStatus.DONE_MAX_RUNS
+
+    orch._real_step = fake_step
+    orch.run()
+
+    # Called once for initial detection and once for the cooldown re-detect
+    assert len(detect_calls) == 2
+    assert char.current_state == VarkaState.CLICK_NPC
+    assert char.status == CharStatus.DONE_MAX_RUNS

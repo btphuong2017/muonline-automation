@@ -33,6 +33,18 @@ def _client_to_screen(hwnd: int, x: int, y: int) -> tuple[int, int]:
     return win32gui.ClientToScreen(hwnd, (x, y))
 
 
+def _win32_error(backend: str, hwnd: int, exc: Exception) -> RuntimeError:
+    """Normalise a raw Win32 failure (pywintypes.error) into RuntimeError.
+
+    Callers throughout the codebase only handle RuntimeError from capture,
+    so raw pywintypes errors (e.g. from a destroyed hwnd) must not escape.
+    """
+    import win32gui
+    if not win32gui.IsWindow(hwnd):
+        return RuntimeError(f"{backend}: window hwnd={hwnd} no longer exists.")
+    return RuntimeError(f"{backend}: Win32 call failed for hwnd={hwnd}: {exc}")
+
+
 class MssBackend(CaptureBackend):
     """Capture via mss (screen grab). Requires window visible and unobscured."""
 
@@ -46,7 +58,12 @@ class MssBackend(CaptureBackend):
         import mss
 
         x, y, w, h = roi
-        sx, sy = _client_to_screen(hwnd, x, y)
+        try:
+            sx, sy = _client_to_screen(hwnd, x, y)
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise _win32_error("MssBackend", hwnd, exc) from exc
         mon = {"left": sx, "top": sy, "width": w, "height": h}
 
         with mss.mss() as sct:
@@ -79,13 +96,19 @@ class PrintWindowBackend(CaptureBackend):
         import win32con
 
         # Get full client-area size
-        left, top, right, bottom = win32gui.GetClientRect(hwnd)
+        try:
+            left, top, right, bottom = win32gui.GetClientRect(hwnd)
+        except Exception as exc:
+            raise _win32_error("PrintWindowBackend", hwnd, exc) from exc
         cw, ch = right - left, bottom - top
         if cw <= 0 or ch <= 0:
             raise RuntimeError(f"PrintWindowBackend: zero-size client area for hwnd={hwnd}.")
 
         # Render the window into a DC
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
+        try:
+            hwnd_dc = win32gui.GetWindowDC(hwnd)
+        except Exception as exc:
+            raise _win32_error("PrintWindowBackend", hwnd, exc) from exc
         try:
             mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
             mem_dc = mfc_dc.CreateCompatibleDC()

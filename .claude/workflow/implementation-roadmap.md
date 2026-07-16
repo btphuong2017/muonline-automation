@@ -17,11 +17,11 @@ Tài liệu này theo dõi trạng thái của 11 phase tổng (xem `C:\Users\Ph
 |-----:|-----|------:|-------------|------------|----------------|---------|
 | 1 | Window discovery | 1 | `varka-window-discovery` | Verified | 2026-05-05 | `uv run python -m varka_auto scan-windows` |
 | 2 | Capability matrix | 7 | `capability-test-plan` | Verified | 2026-05-05 | `uv run python -m varka_auto capability-test` |
-| 3 | Lobby + NPC test | 2 | `varka-lobby-npc` | Not started | — | Phụ thuộc Gate 2 |
-| 4 | Popup handling | 3 | `varka-popups` | Not started | — | Phụ thuộc Gate 3 |
-| 5 | Event map + helper monitoring | 4 | `varka-event-helper-monitoring` | Not started | — | Phụ thuộc Gate 4 |
-| 6 | Enter lobby flow | 5 | `varka-enter-lobby` | Not started | — | Phụ thuộc Gate 5 |
-| 7 | Orchestrator dry-run | 6 | `varka-orchestrator` | Not started | — | Wire-up các gate trước, không sửa logic |
+| 3 | Lobby + NPC test | 2 | `varka-lobby-npc` | Verified | 2026-05-08 | `uv run python -m varka_auto test-lobby-npc --char <name>` |
+| 4 | Popup handling | 3 | `varka-popups` | Verified | 2026-05-08 | `uv run python -m varka_auto test-varka-popups --char <name>` |
+| 5 | Event map + helper monitoring | 4 | `varka-event-helper-monitoring` | Verified | 2026-05-08 | `uv run python -m varka_auto test-event-helper --char <name>` |
+| 6 | Enter lobby flow | 5 | `varka-enter-lobby` | Verified | 2026-05-08 | `uv run python -m varka_auto test-enter-lobby --char <name>` |
+| 7 | Orchestrator dry-run | 6 | `varka-orchestrator` | Verified | 2026-05-08 | `uv run python -m varka_auto start-varka` — full flow Lobby→Event→Lobby cho 1 char |
 
 **Trạng thái cho phép**: `Not started` / `In progress` / `Waiting for user verification` / `Verified` / `Blocked`.
 
@@ -43,6 +43,17 @@ Khi một gate được xác nhận, thêm một mục vào đây — agent `tec
 - File chính đã thay đổi: <danh sách path>
 - Open questions còn lại liên quan: <hoặc “không”>
 ```
+
+### Gate 3–7 — 2026-05-08 (backfill 2026-07-16)
+
+*Các entry dưới đây được bổ sung hồi tố ngày 2026-07-16 — các gate đã được user verify trên game thật ngày 2026-05-08 nhưng roadmap chưa được cập nhật tại thời điểm đó.*
+
+- **Gate 3** — `test-lobby-npc`: lobby detect (4 signal), NPC candidate scan (cache → partial template → grid, max 200 candidates), hover verify + ALT+click mở dialog thành công.
+- **Gate 4** — `test-varka-popups`: Popup 1 anchor (dùng chung file với `npc/npc_dialog_title`), Popup 2 detect qua button trực tiếp, daily-limit dialog nhận diện bằng template nút OK.
+- **Gate 5** — `test-event-helper`: timer state detection bằng template matching (4 state), helper toggle an toàn (chỉ Play→Running), `wait_for_event_map` 3 frame ổn định, heuristic alert ACTIVE > 270s.
+- **Gate 6** — `test-enter-lobby`: Ctrl+T mở Event Window → Imperial Guardian → Enter → confirm OK → lobby ready. Toàn bộ click dùng `set_foreground` + `SendInputBackend`.
+- **Gate 7** — `start-varka`: full flow Lobby→Event→Lobby cho 1 char thành công; RUN_EVENT/WAIT_COMPLETION split (poll 5s/tick); 160 tests pass sau refactor.
+- Open questions còn lại liên quan: không. Còn lại Phase 8 (stability soak multi-char).
 
 ### Gate 2 — 2026-05-05
 - Lệnh verification: `uv run python -m varka_auto capability-test`

@@ -18,6 +18,7 @@ _VERIFY_SETTLE_S = 0.5
 class PopupClickResult(Enum):
     SUCCESS = "success"
     DAILY_LIMIT = "daily_limit"                        # → DONE_BY_GAME_LIMIT at orchestrator
+    DETECT_ONLY = "detect_only"                        # no_click mode — popup 1 found, nothing clicked
     POPUP1_NOT_FOUND = "popup1_not_found"
     POPUP2_NOT_FOUND = "popup2_not_found"
     ENTER_VARKA_BUTTON_NOT_FOUND = "enter_varka_button_not_found"
@@ -87,7 +88,7 @@ def handle_popups(
 
         if no_click:
             # Detection-only mode — report what we found without clicking.
-            report.result = PopupClickResult.POPUP1_NOT_FOUND  # placeholder; caller checks no_click
+            report.result = PopupClickResult.DETECT_ONLY
             return report
 
         # --- Click Enter Varka ---

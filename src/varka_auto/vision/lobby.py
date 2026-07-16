@@ -26,7 +26,10 @@ def _client_size(hwnd: int) -> tuple[int, int]:
     if sys.platform != "win32":
         return 800, 600
     import win32gui
-    l, t, r, b = win32gui.GetClientRect(hwnd)
+    try:
+        l, t, r, b = win32gui.GetClientRect(hwnd)
+    except Exception as exc:
+        raise RuntimeError(f"GetClientRect failed for hwnd={hwnd} (window closed?): {exc}") from exc
     return r - l, b - t
 
 
@@ -86,7 +89,10 @@ class LobbyDetector:
 
     def check(self, hwnd: int) -> LobbyStatus:
         """Single-frame lobby check. is_stable is always False here."""
-        frame = self._grab_full(hwnd)
+        try:
+            frame = self._grab_full(hwnd)
+        except RuntimeError:
+            return LobbyStatus()
 
         label_match, label_conf = self._match_entry(frame, "lobby/lobby_label")
 

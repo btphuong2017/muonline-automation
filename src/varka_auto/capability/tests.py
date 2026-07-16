@@ -283,7 +283,8 @@ def t09_foreground_npc_hover(ctx: dict) -> CapabilityResult:
         r.recommended = "foreground"
         return r
     r.foreground = RV.PARTIAL
-    r.notes = "Asset present but template matching not implemented until Gate 3. Manual verification needed."
+    r.notes = ("Asset present — this harness only checks the asset; "
+               "live hover matching is exercised by test-lobby-npc (Gate 3).")
     r.recommended = "foreground"
     return r
 
@@ -300,7 +301,8 @@ def t10_background_npc_hover(ctx: dict) -> CapabilityResult:
         r.recommended = "foreground"
         return r
     r.background = RV.PARTIAL
-    r.notes = "Asset present but template matching not implemented until Gate 3."
+    r.notes = ("Asset present — this harness only checks the asset; "
+               "live hover matching is exercised by test-lobby-npc (Gate 3).")
     r.recommended = "foreground"
     return r
 
