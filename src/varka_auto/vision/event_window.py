@@ -8,6 +8,7 @@ from typing import Optional
 
 import numpy as np
 
+from varka_auto.automation.window_session import WindowObscured
 from varka_auto.config_.templates import TemplateEntry
 from varka_auto.vision.template_match import match_template
 
@@ -78,6 +79,11 @@ class EventWindowDetector:
         status = EventWindowStatus()
         try:
             frame = self._grab_full(hwnd)
+        except WindowObscured:
+            # A wrong-window read is not the same as "window not open" — let it
+            # propagate so the caller sees a real failure instead of silently
+            # polling the wrong window for the full timeout.
+            raise
         except RuntimeError:
             return status
         status.debug_frame = frame

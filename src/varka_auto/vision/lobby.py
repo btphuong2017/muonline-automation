@@ -9,8 +9,19 @@ from typing import Optional
 
 import numpy as np
 
+from varka_auto.automation.window_session import WindowObscured
 from varka_auto.config_.templates import TemplateEntry
 from varka_auto.vision.template_match import match_template
+
+
+def _check_abort(vk: int) -> bool:
+    if not vk or sys.platform != "win32":
+        return False
+    try:
+        import win32api
+        return bool(win32api.GetAsyncKeyState(vk) & 0x8000)
+    except Exception:
+        return False
 
 
 @dataclass
@@ -91,6 +102,11 @@ class LobbyDetector:
         """Single-frame lobby check. is_stable is always False here."""
         try:
             frame = self._grab_full(hwnd)
+        except WindowObscured:
+            # A wrong-window read is not the same as "not the lobby" — let it
+            # propagate so the caller sees a real failure instead of silently
+            # polling the wrong window for the full timeout.
+            raise
         except RuntimeError:
             return LobbyStatus()
 
@@ -109,14 +125,22 @@ class LobbyDetector:
             debug_frame=frame,
         )
 
-    def wait_for_ready(self, hwnd: int, timeout_s: float = 10.0) -> LobbyStatus:
-        """Poll until all lobby signals are stable for stability_frames checks in a row."""
+    def wait_for_ready(
+        self, hwnd: int, timeout_s: float = 10.0, abort_vk: int = 0,
+    ) -> LobbyStatus:
+        """Poll until all lobby signals are stable for stability_frames checks in a row.
+
+        abort_vk: if set, stop polling early (returning the last status) once the
+        given virtual-key is observed held down. 0 (default) disables the check.
+        """
         deadline = time.monotonic() + timeout_s
         stable_count = 0
         last_frame: Optional[np.ndarray] = None
         last_status = LobbyStatus()
 
         while time.monotonic() < deadline:
+            if _check_abort(abort_vk):
+                return last_status
             status = self.check(hwnd)
 
             if not status.ready:

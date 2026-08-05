@@ -10,6 +10,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from varka_auto.automation.window_session import WindowObscured
 from varka_auto.config_.templates import TemplateEntry
 from varka_auto.vision.template_match import match_template
 
@@ -44,6 +45,16 @@ class EventMapStatus:
     finish_exit_pt: Optional[tuple[int, int]] = None
     lobby_found: bool = False
     debug_frame: Optional[np.ndarray] = field(default=None, repr=False)
+
+
+def _check_abort(vk: int) -> bool:
+    if not vk or sys.platform != "win32":
+        return False
+    try:
+        import win32api
+        return bool(win32api.GetAsyncKeyState(vk) & 0x8000)
+    except Exception:
+        return False
 
 
 def _client_size(hwnd: int) -> tuple[int, int]:
@@ -101,6 +112,11 @@ class EventMapDetector:
         status = EventMapStatus()
         try:
             frame = self._grab_full(hwnd)
+        except WindowObscured:
+            # A wrong-window read is not the same as "not in event map" — let it
+            # propagate so the caller (orchestrator) sees a real failure instead
+            # of silently polling the wrong window for the full timeout.
+            raise
         except RuntimeError:
             return status
         status.debug_frame = frame
@@ -158,13 +174,21 @@ class EventMapDetector:
 
         return status
 
-    def wait_for_event_map(self, hwnd: int, timeout_s: float = 15.0) -> EventMapStatus:
-        """Poll until `in_event_map` is stable for 3 consecutive checks, or timeout."""
+    def wait_for_event_map(
+        self, hwnd: int, timeout_s: float = 15.0, abort_vk: int = 0,
+    ) -> EventMapStatus:
+        """Poll until `in_event_map` is stable for 3 consecutive checks, or timeout.
+
+        abort_vk: if set, stop polling early (returning the last status) once the
+        given virtual-key is observed held down. 0 (default) disables the check.
+        """
         deadline = time.monotonic() + timeout_s
         stable_count = 0
         last = EventMapStatus()
 
         while time.monotonic() < deadline:
+            if _check_abort(abort_vk):
+                return last
             status = self.check(hwnd)
             if status.in_event_map:
                 stable_count += 1

@@ -9,6 +9,7 @@ from typing import Optional
 
 import numpy as np
 
+from varka_auto.automation.window_session import WindowObscured
 from varka_auto.config_.templates import TemplateEntry
 from varka_auto.vision.template_match import match_template
 
@@ -85,6 +86,11 @@ class PopupDetector:
             cw, ch = _client_size(hwnd)
             full_frame = self._capture.grab(hwnd, (0, 0, cw, ch))
             status.debug_frame = full_frame
+        except WindowObscured:
+            # A wrong-window read is not the same as "no popup" — let it
+            # propagate so the caller sees a real failure instead of silently
+            # polling the wrong window for the full timeout.
+            raise
         except RuntimeError:
             return status
 

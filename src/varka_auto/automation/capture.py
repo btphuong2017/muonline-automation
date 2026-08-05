@@ -46,7 +46,24 @@ def _win32_error(backend: str, hwnd: int, exc: Exception) -> RuntimeError:
 
 
 class MssBackend(CaptureBackend):
-    """Capture via mss (screen grab). Requires window visible and unobscured."""
+    """Capture via mss (screen grab). Requires window visible and unobscured.
+
+    verify_owner: when True, refuses to grab unless hwnd is confirmed the top
+    window at its own centre point (see window_session.is_window_on_top).
+    Without this check, a screen grab silently returns whatever window happens
+    to be on top at that screen rectangle — with several overlapping game
+    windows, that means reading character A's pixels while intending to read
+    character B's.
+
+    Defaults to False so single-window callers (the Gate 3-6 test CLIs, the
+    capability-test harness) keep their existing behaviour unchanged — they
+    only ever deal with one game window at a time, so there is nothing to
+    misread. The orchestrator (which juggles multiple overlapping windows)
+    opts in explicitly.
+    """
+
+    def __init__(self, *, verify_owner: bool = False) -> None:
+        self._verify_owner = verify_owner
 
     def name(self) -> str:
         return "mss"
@@ -56,6 +73,14 @@ class MssBackend(CaptureBackend):
             raise RuntimeError("MssBackend requires Windows.")
 
         import mss
+
+        if self._verify_owner:
+            from varka_auto.automation.window_session import is_window_on_top, WindowObscured
+            if not is_window_on_top(hwnd):
+                raise WindowObscured(
+                    f"MssBackend: hwnd={hwnd} is not the top window at its own "
+                    "centre point — refusing to grab (would read another window's pixels)."
+                )
 
         x, y, w, h = roi
         try:
