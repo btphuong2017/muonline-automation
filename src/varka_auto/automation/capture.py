@@ -26,6 +26,13 @@ class CaptureBackend(ABC):
     def name(self) -> str:
         """Human-readable backend name, used in logs."""
 
+    def close(self) -> None:
+        """Release any resources held between grab() calls. Default: nothing to release.
+
+        Backends that keep a long-lived OS resource across calls (MssBackend)
+        override this. Safe to call multiple times.
+        """
+
 
 def _client_to_screen(hwnd: int, x: int, y: int) -> tuple[int, int]:
     """Convert client-area (x, y) to screen coordinates."""
@@ -64,15 +71,48 @@ class MssBackend(CaptureBackend):
 
     def __init__(self, *, verify_owner: bool = False) -> None:
         self._verify_owner = verify_owner
+        # Lazily created, reused across grab() calls — mss.mss() allocates a
+        # GDI capture pipeline (GetWindowDC/CreateCompatibleDC/CreateDIBSection)
+        # that's expensive to construct/tear down; MssBackend instances are
+        # already long-lived (cached per-hwnd by the orchestrator), so there's
+        # no reason to pay that cost on every single grab.
+        self._sct = None
 
     def name(self) -> str:
         return "mss"
 
+    def _get_sct(self):
+        import mss
+        if self._sct is None:
+            self._sct = mss.mss()
+        return self._sct
+
+    def close(self) -> None:
+        """Release the underlying mss capture pipeline. Safe to call multiple times."""
+        if self._sct is not None:
+            try:
+                self._sct.close()
+            finally:
+                self._sct = None
+
+    def __del__(self) -> None:
+        # Safety net for one-shot call sites (e.g. `MssBackend().grab(...)`)
+        # that never call close() explicitly. mss.MSS has no __del__ of its
+        # own, and grab() no longer wraps each call in `with mss.mss()`, so
+        # without this, a throwaway MssBackend would leak its GDI capture
+        # pipeline for the life of the process. CPython's refcounting makes
+        # this fire deterministically right after such a call (no reference
+        # cycle keeps a MssBackend alive), restoring the old per-call cleanup
+        # guarantee for those sites while long-lived instances (orchestrator,
+        # cli capture sessions) still reuse the pipeline across grab() calls.
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def grab(self, hwnd: int, roi: _ROI) -> np.ndarray:
         if sys.platform != "win32":
             raise RuntimeError("MssBackend requires Windows.")
-
-        import mss
 
         if self._verify_owner:
             from varka_auto.automation.window_session import is_window_on_top, WindowObscured
@@ -91,8 +131,14 @@ class MssBackend(CaptureBackend):
             raise _win32_error("MssBackend", hwnd, exc) from exc
         mon = {"left": sx, "top": sy, "width": w, "height": h}
 
-        with mss.mss() as sct:
-            raw = sct.grab(mon)
+        try:
+            raw = self._get_sct().grab(mon)
+        except Exception:
+            # The cached instance may be stale (e.g. display/DPI change mid-run).
+            # Recreate once and retry rather than leaving this backend permanently
+            # broken for the rest of a multi-hour session.
+            self.close()
+            raw = self._get_sct().grab(mon)
 
         frame = np.array(raw)[:, :, :3]  # BGRA → BGR
         if _is_black(frame):
@@ -134,6 +180,9 @@ class PrintWindowBackend(CaptureBackend):
             hwnd_dc = win32gui.GetWindowDC(hwnd)
         except Exception as exc:
             raise _win32_error("PrintWindowBackend", hwnd, exc) from exc
+        mfc_dc = None
+        mem_dc = None
+        bitmap = None
         try:
             mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
             mem_dc = mfc_dc.CreateCompatibleDC()
@@ -151,11 +200,16 @@ class PrintWindowBackend(CaptureBackend):
                 (bmp_info["bmHeight"], bmp_info["bmWidth"], 4)
             )
             full_bgr = full[:, :, :3].copy()
-
-            mem_dc.DeleteDC()
-            win32gui.DeleteObject(bitmap.GetHandle())
-            mfc_dc.DeleteDC()
         finally:
+            # Must run even if CreateCompatibleBitmap/PrintWindow/GetBitmapBits/
+            # reshape raises — otherwise this HDC + HBITMAP leak for the life of
+            # the process (they previously only ran on the non-exception path).
+            if bitmap is not None:
+                win32gui.DeleteObject(bitmap.GetHandle())
+            if mem_dc is not None:
+                mem_dc.DeleteDC()
+            if mfc_dc is not None:
+                mfc_dc.DeleteDC()
             win32gui.ReleaseDC(hwnd, hwnd_dc)
 
         if _is_black(full_bgr):

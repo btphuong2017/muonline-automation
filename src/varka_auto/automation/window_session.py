@@ -75,6 +75,12 @@ class Session:
 
 
 def _assert_on_top(hwnd: int, raise_fn: Callable[..., None], settle_ms: int) -> None:
+    # Skip the raise entirely if hwnd is already on top — same check Session.ensure()
+    # already does between sub-steps. Avoids a guaranteed ShowWindow + 2x SetWindowPos
+    # + settle sleep on every call when nothing actually needs to change (e.g. repeated
+    # polls of the same still-foreground window, or ATTACH sub-steps of one character).
+    if is_window_on_top(hwnd):
+        return
     raise_fn(hwnd, settle_ms=settle_ms)
     if is_window_on_top(hwnd):
         return
