@@ -44,6 +44,40 @@ Khi một gate được xác nhận, thêm một mục vào đây — agent `tec
 - Open questions còn lại liên quan: <hoặc “không”>
 ```
 
+### Gate 5 fix — 2026-08-06
+
+- Vấn đề: sau khi vào event map, helper activation dùng `time.sleep(2.5)` cứng rồi chỉ có
+  3 lượt × 0.3s để icon helper render — nếu icon chậm hiện (máy chậm/nhiều client), ngân sách
+  3 lượt bị UNKNOWN ăn hết trước khi kịp click lần nào → `HELPER_ACTIVATE_FAILED` giả.
+- Sửa: tách `_wait_for_helper_visible()` (poll 1s/lần, deadline 10s, độc lập ngân sách) khỏi
+  vòng click/verify count-based (`max_retries`, không đổi). Gộp `enter_and_activate()` và
+  `run_event()` dùng chung `_activate_helper()`. Thêm `ActivateResult.HELPER_NOT_VISIBLE` /
+  `EventRunResult.HELPER_NOT_VISIBLE` tách khỏi `HELPER_ACTIVATE_FAILED`. Thêm field
+  `helper_wait_s` vào report để đo thời gian chờ thật. `abort_vk` (ESC) được kiểm tra ở mỗi
+  vòng poll — trước đây ESC vô hiệu trong lúc sleep 2.5s.
+- Quyết định kiến trúc: vẫn giữ block scheduler trong lúc chờ helper (không yield sang
+  character khác) — `_run_attach_transaction` giữ `foreground_session` xuyên suốt để tránh
+  sai toạ độ click/ảnh chụp. Ca thường gặp block ít hơn hiện tại (~0.5-1.5s thay vì 2.5s cố
+  định); chỉ ca icon không bao giờ hiện mới block tới 10s.
+- Dọn thêm: đồng bộ `map_timeout_s`/`wait_for_event_map` default về 25s ở mọi nơi (trước đó
+  lệch 25s/15s), gộp nhánh `cli.py test-event-helper --no-monitor` dùng chung
+  `_wait_for_helper_visible` thay vì `sleep(0.8)` riêng.
+- Lệnh verification: `uv run pytest tests/automation/test_event_helper.py
+  tests/vision/test_event_map.py -v` (35 passed) và `uv run pytest -q` (198 passed).
+  Đo thời gian thật trên game: `uv run varka test-event-helper --char <name> --no-monitor`.
+- File chính đã thay đổi: `src/varka_auto/automation/event_helper.py`,
+  `src/varka_auto/vision/event_map.py`, `src/varka_auto/orchestrator.py`,
+  `src/varka_auto/cli.py`, `tests/automation/test_event_helper.py`,
+  `tests/vision/test_event_map.py`, `tests/test_orchestrator.py`,
+  `docs/varka-flow/05-issue-4-event-map-helper-monitoring.md`,
+  `docs/varka-flow/09-varka-state-reference.md`.
+- Open questions còn lại liên quan: không. `map_timeout_s=25s` vẫn cao hơn khoảng "5-20s" mà
+  `10-varka-error-and-retry-policy.md` mô tả — cố ý giữ nguyên (an toàn hơn cho máy chậm),
+  đã note trong plan. `config/runtime.yaml` vẫn chưa được kích hoạt — để riêng lần khác.
+  Chưa đo được số liệu thật icon helper mất bao lâu để render trên máy user — cần chạy lệnh
+  verification ở trên trên game thật để lấy con số, dùng để cân nhắc chỉnh
+  `_HELPER_VISIBLE_TIMEOUT_S` (hiện 10s) nếu cần.
+
 ### Gate 3–7 — 2026-05-08 (backfill 2026-07-16)
 
 *Các entry dưới đây được bổ sung hồi tố ngày 2026-07-16 — các gate đã được user verify trên game thật ngày 2026-05-08 nhưng roadmap chưa được cập nhật tại thời điểm đó.*

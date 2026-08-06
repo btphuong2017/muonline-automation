@@ -65,7 +65,7 @@ def _mock_det():
 
 
 def _report(result):
-    return SimpleNamespace(result=result)
+    return SimpleNamespace(result=result, helper_wait_s=0.0)
 
 
 @contextmanager

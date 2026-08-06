@@ -36,6 +36,14 @@ This document lists the states used in the Varka automation flow and provides a 
 * **WAIT_EVENT_MAP_LOADING** – The bot has clicked to enter the event and is waiting for the dungeon map to load.  It polls for the timer and map label but does not interact.
 * **EVENT_MAP_READY_BUT_HELPER_OFF** – The dungeon is loaded but the helper is not yet running; the helper button shows the play icon.
 * **START_HELPER** – The bot clicks the helper play icon.  It must verify that the helper switches to the running/pause icon.
+
+  Implementation note: `_activate_helper()` in `automation/event_helper.py` implements
+  `WAIT_EVENT_MAP_LOADING` -> `EVENT_MAP_READY_BUT_HELPER_OFF` -> `START_HELPER` as one
+  function with two independently-budgeted phases rather than three separate states:
+  `_wait_for_helper_visible()` (time-based poll, up to `_HELPER_VISIBLE_TIMEOUT_S`, for the
+  icon to render) followed by a count-based click/verify retry loop (`max_retries`). The
+  boundary between the three conceptual states above is the moment the poll first sees a
+  non-UNKNOWN helper_state.
 * **EVENT_RUNNING_WITH_HELPER_ON** – The character is auto‑farming with the helper.  The bot monitors the timer, alerts if the remaining time is short and monsters remain, and looks for the finish dialog.
 * **EVENT_MONITORING** – Same as the above but emphasises that the bot is in a monitoring loop rather than performing active actions.
 * **EVENT_CRITICAL_ALERT** – A substate triggered when the timer shows less than 30 seconds and remaining monsters are non‑zero.  The bot raises a terminal alert but does not control the character.
