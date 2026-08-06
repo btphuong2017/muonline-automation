@@ -76,3 +76,72 @@ def save_characters(path: Path, chars: list[CharacterConfig]) -> None:
         yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
     )
+
+
+@dataclass
+class SyncAction:
+    tag: str  # "ADDED" | "UPDATED" | "KEPT" | "REMOVED"
+    display_name: str
+    note: str
+
+
+def merge_detected_characters(
+    existing: list[CharacterConfig],
+    detected_names: list[str],
+    max_runs: int = 10,
+    force: bool = False,
+) -> tuple[list[CharacterConfig], list[SyncAction]]:
+    """Merge freshly-detected game-window names into an existing character list.
+
+    - A detected name with no existing entry is ADDED with enabled=True,
+      max_runs=max_runs.
+    - A detected name that already has an entry is either KEPT as-is
+      (force=False — settings are the user's to manage) or, with force=True,
+      UPDATED so enabled=True and max_runs=max_runs (existing `level` is left
+      untouched either way; it isn't part of what force is meant to enforce).
+      If forcing wouldn't actually change anything, the action is KEPT rather
+      than a no-op UPDATED.
+    - An existing entry with no matching detected name is REMOVED — dropped
+      from the returned list entirely.
+
+    Returns (merged, actions) with merged in the same order as detected_names.
+    Pure function — no I/O, no Win32 — so it's fully unit-testable.
+    """
+    by_name = {c.display_name: c for c in existing}
+    detected_set = set(detected_names)
+
+    merged: list[CharacterConfig] = []
+    actions: list[SyncAction] = []
+
+    for name in detected_names:
+        current = by_name.get(name)
+        if current is None:
+            merged.append(CharacterConfig(display_name=name, enabled=True, max_runs=max_runs))
+            actions.append(SyncAction("ADDED", name, f"added with max_runs={max_runs}"))
+            continue
+
+        if not force:
+            merged.append(current)
+            actions.append(SyncAction("KEPT", name, "settings preserved"))
+            continue
+
+        changes = []
+        if not current.enabled:
+            changes.append("enabled false->true")
+        if current.max_runs != max_runs:
+            changes.append(f"max_runs {current.max_runs}->{max_runs}")
+
+        if not changes:
+            merged.append(current)
+            actions.append(SyncAction("KEPT", name, "already enabled=true, max_runs matches"))
+        else:
+            merged.append(CharacterConfig(
+                display_name=name, enabled=True, level=current.level, max_runs=max_runs,
+            ))
+            actions.append(SyncAction("UPDATED", name, ", ".join(changes)))
+
+    for name, current in by_name.items():
+        if name not in detected_set:
+            actions.append(SyncAction("REMOVED", name, "window not found — removed from config"))
+
+    return merged, actions

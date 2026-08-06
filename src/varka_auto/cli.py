@@ -40,17 +40,43 @@ def scan_windows(
         "--debug",
         help="Also show windows that contain 'Asteria' but don't match the full title regex",
     ),
+    sync: bool = typer.Option(
+        False,
+        "--sync",
+        help="Also update characters.yaml: force enabled=true and max_runs for every "
+             "detected character (even ones already configured differently), and remove "
+             "characters with no open window. The 'matched?' column above reflects state "
+             "BEFORE this sync. For a non-destructive sync that preserves existing "
+             "per-character settings, use `sync-characters` instead.",
+    ),
+    max_runs: int = typer.Option(
+        10,
+        "--max-runs",
+        help="max_runs to write for every detected character when --sync is used",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="With --sync: show what would change without writing characters.yaml",
+    ),
 ) -> None:
     """Enumerate and display all Mu Online game windows. (Gate 1)"""
     from varka_auto.automation.windows import enumerate_game_windows
-    from varka_auto.config_.characters import load_characters, CharactersConfigError
+    from varka_auto.config_.characters import (
+        CharactersConfigError,
+        load_characters,
+        merge_detected_characters,
+        save_characters,
+    )
     from rich.table import Table
 
-    # Load character config (optional — only used for match/warning column)
+    # Load character config (optional — only used for match/warning column, and as the
+    # baseline for --sync)
+    existing_chars: list = []
     char_names: set[str] = set()
     try:
-        chars = load_characters(config)
-        char_names = {c.display_name.lower() for c in chars if c.enabled}
+        existing_chars = load_characters(config)
+        char_names = {c.display_name.lower() for c in existing_chars if c.enabled}
     except CharactersConfigError as exc:
         console.print(f"[yellow]Warning: {exc}[/yellow]")
         console.print("[yellow]Continuing without character matching.[/yellow]")
@@ -125,6 +151,46 @@ def scan_windows(
     elif debug:
         console.print("[green]No near-miss windows — all 'Asteria' windows matched the regex.[/green]")
 
+    if not sync:
+        return
+
+    # --sync: force enabled/max_runs for every detected character and drop the rest.
+    # Duplicate window names would collapse into a single config entry, so refuse
+    # rather than write something ambiguous (scan-windows without --sync only warns).
+    duplicates = sorted(name for name, count in seen_names.items() if count > 1)
+    if duplicates:
+        console.print(
+            f"\n[red]Refusing to sync: duplicate window name(s) {duplicates} — "
+            "each character must have a unique in-game name before syncing.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    merged, actions = merge_detected_characters(
+        existing_chars, [w.name for w in windows], max_runs=max_runs, force=True,
+    )
+
+    sync_table = Table(show_header=True, header_style="bold", title="\nSync: characters.yaml")
+    sync_table.add_column("Action", style="bold")
+    sync_table.add_column("Character")
+    sync_table.add_column("Note", style="dim")
+
+    _ACTION_STYLE = {"ADDED": "green", "UPDATED": "yellow", "KEPT": "cyan", "REMOVED": "red"}
+    for action in actions:
+        style = _ACTION_STYLE.get(action.tag, "")
+        sync_table.add_row(f"[{style}]{action.tag}[/{style}]", action.display_name, action.note)
+
+    console.print(sync_table)
+
+    enabled_count = sum(1 for c in merged if c.enabled)
+
+    if dry_run:
+        console.print(f"\n[yellow][DRY-RUN] Would write {len(merged)} character(s) "
+                      f"({enabled_count} enabled) to {config}[/yellow]")
+    else:
+        save_characters(config, merged)
+        console.print(f"\n[green]characters.yaml updated:[/green] "
+                      f"{len(merged)} character(s) ({enabled_count} enabled) -> {config}")
+
 
 # ---------------------------------------------------------------------------
 # sync-characters — auto-update characters.yaml from detected game windows
@@ -155,9 +221,9 @@ def sync_characters(
     """
     from varka_auto.automation.windows import enumerate_game_windows
     from varka_auto.config_.characters import (
-        CharacterConfig,
         CharactersConfigError,
         load_characters,
+        merge_detected_characters,
         save_characters,
     )
     from rich.table import Table
@@ -177,30 +243,27 @@ def sync_characters(
     console.print(f"Found {len(windows)} window(s).\n")
 
     # Load existing config (ignore errors — treat missing file as empty)
-    existing: dict[str, CharacterConfig] = {}
+    existing_chars = []
     try:
-        for c in load_characters(config):
-            existing[c.display_name] = c
+        existing_chars = load_characters(config)
     except CharactersConfigError:
         pass
 
-    detected_names = {w.name for w in windows}
+    merged, actions = merge_detected_characters(
+        existing_chars, [w.name for w in windows], max_runs=max_runs, force=False,
+    )
 
-    # Build merged list — only keep chars with an open window
-    merged: list[CharacterConfig] = []
-    actions: list[tuple[str, str, str]] = []  # (tag, name, note)
-
-    for w in windows:
-        if w.name in existing:
-            merged.append(existing[w.name])
-            actions.append(("KEPT", w.name, f"lv {w.level}, resets {w.resets} — settings preserved"))
-        else:
-            merged.append(CharacterConfig(display_name=w.name, enabled=True, max_runs=max_runs))
-            actions.append(("ADDED", w.name, f"lv {w.level}, resets {w.resets} — added with max_runs={max_runs}"))
-
-    for name in existing:
-        if name not in detected_names:
-            actions.append(("REMOVED", name, "window not found — removed from config"))
+    # Enrich ADDED/KEPT notes with lv/resets from the live window — merge_detected_characters
+    # is name-only (pure, no Win32 dependency), so that detail is layered on here.
+    window_by_name = {w.name: w for w in windows}
+    for action in actions:
+        w = window_by_name.get(action.display_name)
+        if w is None:
+            continue
+        if action.tag == "KEPT":
+            action.note = f"lv {w.level}, resets {w.resets} — settings preserved"
+        elif action.tag == "ADDED":
+            action.note = f"lv {w.level}, resets {w.resets} — added with max_runs={max_runs}"
 
     # Print summary table
     table = Table(show_header=True, header_style="bold")
@@ -209,9 +272,9 @@ def sync_characters(
     table.add_column("Note", style="dim")
 
     _ACTION_STYLE = {"ADDED": "green", "KEPT": "cyan", "REMOVED": "red"}
-    for tag, name, note in actions:
-        style = _ACTION_STYLE.get(tag, "")
-        table.add_row(f"[{style}]{tag}[/{style}]", name, note)
+    for action in actions:
+        style = _ACTION_STYLE.get(action.tag, "")
+        table.add_row(f"[{style}]{action.tag}[/{style}]", action.display_name, action.note)
 
     console.print(table)
 
