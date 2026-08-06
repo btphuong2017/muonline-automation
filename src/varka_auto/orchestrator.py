@@ -174,14 +174,32 @@ class Orchestrator:
             if self._live is not None:
                 self._live.update(self._build_display())
 
-            if self.smoke:
-                self._run_smoke_round()
-            else:
-                self._run_main_loop()
+            try:
+                if self.smoke:
+                    self._run_smoke_round()
+                else:
+                    self._run_main_loop()
+            finally:
+                self._close_detectors()
 
             self._log_event("[green]All characters finished.[/green]")
 
         self._live = None
+
+    def _close_detectors(self) -> None:
+        """Release capture backends' resources (MssBackend's cached GDI capture
+        pipeline) for every character we ever built detectors for. Runs on every
+        exit path — normal completion, abort, or an unexpected exception — so a
+        multi-hour run never leaves stale GDI handles behind. Best-effort: a
+        backend that fails to close must not prevent the others from closing."""
+        for det in self._detectors.values():
+            capture = det.get("capture")
+            if capture is None:
+                continue
+            try:
+                capture.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Main scheduling loop
