@@ -10,6 +10,9 @@ from varka_auto.automation.event_helper import (
     CompletionCheckResult,
     EventRunReport,
     EventRunResult,
+    _HELPER_MIN_SETTLE_S,
+    _HELPER_POLL_S,
+    _HELPER_VISIBLE_TIMEOUT_S,
     check_completion_tick,
     enter_and_activate,
     run_event,
@@ -51,6 +54,29 @@ def mock_backend():
     return b
 
 
+@pytest.fixture()
+def fake_clock(monkeypatch):
+    """Deterministic fake clock for event_helper's poll loops.
+
+    time.sleep(s) advances the fake clock by s instead of actually blocking;
+    time.monotonic() reads it back. Without this, _wait_for_helper_visible's
+    deadline is computed from the REAL clock, so simply no-op-patching
+    time.sleep (the old pattern) makes timeout-path tests busy-spin for the
+    real _HELPER_VISIBLE_TIMEOUT_S seconds.
+    """
+    state = {"t": 0.0}
+
+    def _sleep(s):
+        state["t"] += s
+
+    def _monotonic():
+        return state["t"]
+
+    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", _sleep)
+    monkeypatch.setattr("varka_auto.automation.event_helper.time.monotonic", _monotonic)
+    return state
+
+
 # ---------------------------------------------------------------------------
 # Map entry timeout
 # ---------------------------------------------------------------------------
@@ -68,9 +94,7 @@ def test_map_entry_timeout(mock_backend):
 # Helper already running — skip click
 # ---------------------------------------------------------------------------
 
-def test_helper_already_running(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_helper_already_running(mock_backend, fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(
@@ -88,8 +112,7 @@ def test_helper_already_running(monkeypatch, mock_backend):
 # Helper stopped → click → verify running
 # ---------------------------------------------------------------------------
 
-def test_helper_activate_success(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
+def test_helper_activate_success(monkeypatch, mock_backend, fake_clock):
     monkeypatch.setattr("varka_auto.automation.event_helper.set_foreground",
                         lambda hwnd, **kw: None)
     mock_fg = MagicMock()
@@ -117,18 +140,19 @@ def test_helper_activate_success(monkeypatch, mock_backend):
 
 
 # ---------------------------------------------------------------------------
-# Helper unknown exhausts retries
+# Helper icon never renders — HELPER_NOT_VISIBLE (Phase 1 timeout)
 # ---------------------------------------------------------------------------
 
-def test_helper_activate_failed_unknown(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_helper_never_visible(mock_backend, fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(helper_state=HelperState.UNKNOWN)
 
     report = run_event(0, detector, mock_backend, max_retries=2, abort_vk=0)
-    assert report.result == EventRunResult.HELPER_ACTIVATE_FAILED
+    assert report.result == EventRunResult.HELPER_NOT_VISIBLE
+    assert report.helper_wait_s == pytest.approx(
+        _HELPER_MIN_SETTLE_S + _HELPER_VISIBLE_TIMEOUT_S, abs=_HELPER_POLL_S
+    )
     mock_backend.click.assert_not_called()
 
 
@@ -136,8 +160,7 @@ def test_helper_activate_failed_unknown(monkeypatch, mock_backend):
 # Success with finish dialog
 # ---------------------------------------------------------------------------
 
-def test_success_with_dialog(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
+def test_success_with_dialog(monkeypatch, mock_backend, fake_clock):
     monkeypatch.setattr("varka_auto.automation.event_helper.set_foreground",
                         lambda hwnd, **kw: None)
     mock_fg_backend = MagicMock()
@@ -167,9 +190,7 @@ def test_success_with_dialog(monkeypatch, mock_backend):
 # Success auto-return (lobby found, no dialog)
 # ---------------------------------------------------------------------------
 
-def test_success_auto_return(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_success_auto_return(mock_backend, fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(helper_state=HelperState.RUNNING, timer_state=TimerState.ACTIVE)
@@ -187,9 +208,7 @@ def test_success_auto_return(monkeypatch, mock_backend):
 # Completion timeout
 # ---------------------------------------------------------------------------
 
-def test_completion_timeout(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_completion_timeout(mock_backend, fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(helper_state=HelperState.RUNNING, timer_state=TimerState.ACTIVE)
@@ -206,9 +225,7 @@ def test_completion_timeout(monkeypatch, mock_backend):
 # no_click mode
 # ---------------------------------------------------------------------------
 
-def test_no_click_skips_helper_click(monkeypatch, mock_backend):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_no_click_skips_helper_click(mock_backend, fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(
@@ -234,6 +251,31 @@ def test_aborted_before_map_entry(monkeypatch, mock_backend):
     mock_backend.click.assert_not_called()
 
 
+def test_abort_during_helper_poll(monkeypatch, mock_backend, fake_clock):
+    """ESC must interrupt the (potentially 10s) helper-visible poll itself —
+    not just the checks before/after it. Previously this window was a flat,
+    uninterruptible time.sleep(2.5) with no abort check at all."""
+    import varka_auto.automation.event_helper as mod
+
+    def _abort(vk):
+        # False for the pre-map-wait / post-map-wait checks (t == 0), and for
+        # the first poll iteration (t == _HELPER_MIN_SETTLE_S); becomes True
+        # only once a full poll tick has elapsed inside the wait loop.
+        return fake_clock["t"] >= _HELPER_MIN_SETTLE_S + _HELPER_POLL_S
+
+    monkeypatch.setattr(mod, "_check_abort", _abort)
+
+    detector = MagicMock(spec=EventMapDetector)
+    detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
+    detector.check.return_value = _map_status(helper_state=HelperState.UNKNOWN)
+
+    report = run_event(0, detector, mock_backend, abort_vk=0x1B)
+    assert report.result == EventRunResult.ABORTED_BY_USER
+    mock_backend.click.assert_not_called()
+    # aborted well before the full visibility timeout would have elapsed
+    assert fake_clock["t"] < _HELPER_VISIBLE_TIMEOUT_S
+
+
 # ===========================================================================
 # enter_and_activate()
 # ===========================================================================
@@ -246,9 +288,7 @@ def test_enter_and_activate_map_timeout():
     assert report.result == ActivateResult.MAP_ENTRY_TIMEOUT
 
 
-def test_enter_and_activate_helper_already_running(monkeypatch):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_enter_and_activate_helper_already_running(fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(helper_state=HelperState.RUNNING, timer_state=TimerState.ACTIVE)
@@ -258,8 +298,7 @@ def test_enter_and_activate_helper_already_running(monkeypatch):
     assert not report.helper_activated
 
 
-def test_enter_and_activate_success(monkeypatch):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
+def test_enter_and_activate_success(monkeypatch, fake_clock):
     monkeypatch.setattr("varka_auto.automation.event_helper.set_foreground", lambda hwnd, **kw: None)
     mock_fg = MagicMock()
     monkeypatch.setattr("varka_auto.automation.event_helper.SendInputBackend", lambda: mock_fg)
@@ -276,15 +315,102 @@ def test_enter_and_activate_success(monkeypatch):
     mock_fg.click.assert_called_once_with(0, (30, 40))
 
 
-def test_enter_and_activate_failed_unknown(monkeypatch):
-    monkeypatch.setattr("varka_auto.automation.event_helper.time.sleep", lambda s: None)
-
+def test_enter_and_activate_never_visible(fake_clock):
     detector = MagicMock(spec=EventMapDetector)
     detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
     detector.check.return_value = _map_status(helper_state=HelperState.UNKNOWN)
 
     report = enter_and_activate(0, detector, max_retries=2, abort_vk=0)
-    assert report.result == ActivateResult.HELPER_ACTIVATE_FAILED
+    assert report.result == ActivateResult.HELPER_NOT_VISIBLE
+
+
+def test_enter_and_activate_helper_visible_late(monkeypatch, fake_clock):
+    """Icon takes several poll ticks to render — must still be clicked and
+    activated, not fail just because it wasn't there on the first look."""
+    monkeypatch.setattr("varka_auto.automation.event_helper.set_foreground", lambda hwnd, **kw: None)
+    mock_fg = MagicMock()
+    monkeypatch.setattr("varka_auto.automation.event_helper.SendInputBackend", lambda: mock_fg)
+
+    unknown = _map_status(helper_state=HelperState.UNKNOWN)
+    stopped = _map_status(helper_state=HelperState.STOPPED, helper_pt=(30, 40), timer_state=TimerState.ACTIVE)
+    running = _map_status(helper_state=HelperState.RUNNING, timer_state=TimerState.ACTIVE)
+
+    detector = MagicMock(spec=EventMapDetector)
+    detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
+    # 4 UNKNOWN poll ticks before the icon renders, then a normal click/verify
+    detector.check.side_effect = [unknown, unknown, unknown, unknown, stopped, running]
+
+    report = enter_and_activate(0, detector, max_retries=3, abort_vk=0)
+    assert report.result == ActivateResult.SUCCESS
+    assert report.helper_activated
+    mock_fg.click.assert_called_once_with(0, (30, 40))
+
+
+def test_click_budget_not_consumed_by_unknown(monkeypatch, fake_clock):
+    """The UNKNOWN ticks spent waiting for the icon to appear must NOT eat
+    into max_retries — that budget is for click attempts only."""
+    monkeypatch.setattr("varka_auto.automation.event_helper.set_foreground", lambda hwnd, **kw: None)
+    mock_fg = MagicMock()
+    monkeypatch.setattr("varka_auto.automation.event_helper.SendInputBackend", lambda: mock_fg)
+
+    unknown = _map_status(helper_state=HelperState.UNKNOWN)
+    stopped = _map_status(helper_state=HelperState.STOPPED, helper_pt=(30, 40), timer_state=TimerState.ACTIVE)
+    running = _map_status(helper_state=HelperState.RUNNING, timer_state=TimerState.ACTIVE)
+
+    detector = MagicMock(spec=EventMapDetector)
+    detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
+    # Phase 1: 3 UNKNOWN ticks then visible (STOPPED).
+    # Phase 2 (max_retries=3): attempt0 click->verify(STOPPED, miss),
+    # attempt1 re-check(STOPPED)->click->verify(STOPPED, miss),
+    # attempt2 re-check(STOPPED)->click->verify(RUNNING, success).
+    detector.check.side_effect = [
+        unknown, unknown, unknown, stopped,   # Phase 1
+        stopped, stopped, stopped, stopped, running,  # Phase 2 (verify, recheck+verify, recheck+verify)
+    ]
+
+    report = enter_and_activate(0, detector, max_retries=3, abort_vk=0)
+    assert report.result == ActivateResult.SUCCESS
+    assert report.helper_activated
+    assert mock_fg.click.call_count == 3
+
+
+def test_min_settle_before_first_check(fake_clock):
+    """The settle sleep must happen before the first detector.check call,
+    not be skipped or reordered."""
+    detector = MagicMock(spec=EventMapDetector)
+    detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
+
+    call_times = []
+
+    def _check(hwnd):
+        call_times.append(fake_clock["t"])
+        return _map_status(helper_state=HelperState.RUNNING, timer_state=TimerState.ACTIVE)
+
+    detector.check.side_effect = _check
+
+    enter_and_activate(0, detector, abort_vk=0)
+    assert call_times[0] == pytest.approx(_HELPER_MIN_SETTLE_S)
+
+
+def test_poll_interval(fake_clock):
+    """Consecutive Phase-1 checks while the icon is still UNKNOWN must be
+    spaced _HELPER_POLL_S apart."""
+    detector = MagicMock(spec=EventMapDetector)
+    detector.wait_for_event_map.return_value = _map_status(in_event_map=True, timer_state=TimerState.ACTIVE)
+
+    call_times = []
+    responses = [HelperState.UNKNOWN, HelperState.UNKNOWN, HelperState.UNKNOWN, HelperState.STOPPED]
+
+    def _check(hwnd):
+        call_times.append(fake_clock["t"])
+        state = responses[len(call_times) - 1]
+        return _map_status(helper_state=state, helper_pt=(1, 1), timer_state=TimerState.ACTIVE)
+
+    detector.check.side_effect = _check
+
+    enter_and_activate(0, detector, no_click=True, abort_vk=0)
+    deltas = [b - a for a, b in zip(call_times, call_times[1:])]
+    assert deltas == [pytest.approx(_HELPER_POLL_S)] * len(deltas)
 
 
 # ===========================================================================

@@ -250,3 +250,7 @@ def test_wait_for_event_map_stable(monkeypatch):
     detector = EventMapDetector(_FakeCapture(), templates)
     status = detector.wait_for_event_map(0, timeout_s=5.0)
     assert status.in_event_map
+    # 2 match_template calls per check() (map label + timer anchor); must take
+    # exactly _STABILITY_FRAMES=3 consecutive matching checks before returning
+    # — this guards against a regression to _STABILITY_FRAMES=1.
+    assert calls["n"] == 6
