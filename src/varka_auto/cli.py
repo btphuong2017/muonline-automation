@@ -680,7 +680,12 @@ def test_event_helper(
       - Run test-varka-popups first to enter the event map.
     """
     from varka_auto.automation.capture import MssBackend
-    from varka_auto.automation.event_helper import EventRunResult, run_event
+    from varka_auto.automation.event_helper import (
+        EventRunResult,
+        _MAP_TIMEOUT_S,
+        _wait_for_helper_visible,
+        run_event,
+    )
     from varka_auto.automation.focus import restore_without_focus
     from varka_auto.automation.input import MessageBackend
     from varka_auto.automation.windows import enumerate_game_windows
@@ -770,17 +775,20 @@ def test_event_helper(
 
     if no_monitor:
         console.print("[cyan]Waiting for event map entry (no monitor)...[/cyan]")
-        map_status = detector.wait_for_event_map(hwnd, timeout_s=15.0)
+        map_status = detector.wait_for_event_map(hwnd, timeout_s=_MAP_TIMEOUT_S)
         console.print(f"IN_EVENT_MAP={'true' if map_status.in_event_map else 'false'}")
         if not map_status.in_event_map:
             console.print("[red]Event map not detected within timeout.[/red]")
             raise typer.Exit(code=1)
 
         console.print(f"TIMER_STATE={map_status.timer_state.value}")
-        import time as _time
-        _time.sleep(0.8)
+        console.print("[cyan]Polling for helper icon...[/cyan]")
+        visible = _wait_for_helper_visible(hwnd, detector, abort_vk=0)
+        console.print(f"Helper icon appeared after: {visible.waited_s:.1f}s")
+        if visible.reason == "timeout":
+            console.print("[red]Helper icon never appeared within timeout.[/red]")
 
-        status = detector.check(hwnd)
+        status = visible.status
         console.print(f"HELPER_STATE={status.helper_state.value}")
         if status.helper_pt:
             console.print(f"  Helper play icon centre: ({status.helper_pt[0]},{status.helper_pt[1]})")
@@ -809,15 +817,20 @@ def test_event_helper(
     elif report.result == EventRunResult.MAP_ENTRY_TIMEOUT:
         console.print("[red]MAP_ENTRY_TIMEOUT — event map not detected within timeout.\n"
                       "  Is the character in the Varka event map?[/red]")
+    elif report.result == EventRunResult.HELPER_NOT_VISIBLE:
+        console.print("[red]HELPER_NOT_VISIBLE — helper icon never rendered within timeout.\n"
+                      "  Check event/helper_play_icon / helper_pause_icon ROI (313,43,27,24) "
+                      "and that the templates match the current UI.[/red]")
     elif report.result == EventRunResult.HELPER_ACTIVATE_FAILED:
-        console.print("[red]HELPER_ACTIVATE_FAILED — could not detect or activate helper.\n"
-                      "  Capture event/helper_play_icon and event/helper_pause_icon templates.[/red]")
+        console.print("[red]HELPER_ACTIVATE_FAILED — icon was visible but the click did not "
+                      "toggle it to running.\n  Check the click point and input backend.[/red]")
     elif report.result == EventRunResult.COMPLETION_TIMEOUT:
         console.print("[red]COMPLETION_TIMEOUT — event did not complete within timeout.[/red]")
     elif report.result == EventRunResult.ABORTED_BY_USER:
         console.print("[yellow]Aborted by user (Escape).[/yellow]")
 
     console.print(f"Helper activated: {report.helper_activated}")
+    console.print(f"Helper wait: {report.helper_wait_s:.1f}s")
     console.print(f"Finish dialog used: {report.finish_dialog_used}")
     console.print(f"Retries used: {report.retries_used}")
 

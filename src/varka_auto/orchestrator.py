@@ -445,6 +445,8 @@ class Orchestrator:
                 self._log_event(f"[cyan]{char.name}: waiting for event map entry...[/cyan]")
                 report = enter_and_activate(char.hwnd, det["event_map"])
                 if report.result == ActivateResult.SUCCESS:
+                    self._log_event(f"[cyan]{char.name}: helper icon appeared after "
+                                    f"{report.helper_wait_s:.1f}s[/cyan]")
                     char.current_state = VarkaState.WAIT_COMPLETION
                     return True
                 if report.result == ActivateResult.ABORTED_BY_USER:

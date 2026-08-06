@@ -140,7 +140,7 @@ class EventMapDetector:
             else:
                 status.timer_state = TimerState.ACTIVE
 
-        # Helper icons — search full frame
+        # Helper icons — templates.yaml pins both to the small top-left ROI (313,43,27,24)
         play_matched, _, play_loc = self._match(frame, "event/helper_play_icon")
         pause_matched, _, _ = self._match(frame, "event/helper_pause_icon")
         if pause_matched:
@@ -175,7 +175,7 @@ class EventMapDetector:
         return status
 
     def wait_for_event_map(
-        self, hwnd: int, timeout_s: float = 15.0, abort_vk: int = 0,
+        self, hwnd: int, timeout_s: float = 25.0, abort_vk: int = 0,
     ) -> EventMapStatus:
         """Poll until `in_event_map` is stable for 3 consecutive checks, or timeout.
 

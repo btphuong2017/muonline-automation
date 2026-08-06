@@ -19,12 +19,12 @@ Immediately after entering the event map, the in‑game Varka Helper must be act
 
 The recommended procedure is:
 
-1. **Wait briefly:**  Even after the event map is ready, wait 0.5–1 second for the helper UI to render.  Do not click immediately.
+1. **Wait, then poll — don’t guess a fixed delay:**  Wait a brief settle time (0.5 s) for the UI to start rendering, then poll for the helper icon once per second, for up to ~10 seconds. Stop polling as soon as either icon (play or pause) is detected — don’t click while the icon is still absent (“unknown”). This budget is independent of the click‑retry budget below: a slow‑rendering icon must not eat into the number of click attempts.
 2. **Detect helper icon:**  Crop the helper area (usually top‑left) and run template matching for the play and pause icons.  If the play icon (helper off) is found, proceed to click; if the pause icon (helper running) is found, skip the click.
-3. **Click when off:**  If the helper is off, click the play icon to start it.  Wait briefly, then verify that the icon changed to pause.  If it does not change, log a retryable error.
+3. **Click when off:**  If the helper is off, click the play icon to start it.  Wait briefly, then verify that the icon changed to pause.  If it does not change, retry up to a fixed number of attempts before logging a retryable error.
 4. **Do nothing when on:**  If the helper is already running, avoid clicking again to prevent pausing it.  Proceed to monitoring.
 
-If the helper state cannot be determined, do not guess; log the issue and handle via the orchestrator’s retry logic.
+If the helper icon never renders within the polling budget, log this distinctly from “clicked but didn’t toggle” — the two indicate different root causes (missing/stale template vs. a click that isn’t landing) and should surface as separate failure reasons.
 
 ### Monitoring the event timer
 
