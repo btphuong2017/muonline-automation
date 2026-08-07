@@ -764,3 +764,64 @@ def test_retry_later_char_gets_picked_again_after_cooldown_elapses(monkeypatch):
 
     assert calls == [CharStatus.RUNNING]  # flipped from RETRY_LATER before the attempt
     assert char.status == CharStatus.DONE_MAX_RUNS
+
+
+# ---------------------------------------------------------------------------
+# _close_detectors — capture backend cleanup on shutdown
+# ---------------------------------------------------------------------------
+
+def test_close_detectors_closes_every_capture_backend():
+    orch = Orchestrator([_char()], dry_run=True)
+    cap_a, cap_b = MagicMock(), MagicMock()
+    orch._detectors = {
+        1: {**_mock_det(), "capture": cap_a},
+        2: {**_mock_det(), "capture": cap_b},
+    }
+
+    orch._close_detectors()
+
+    cap_a.close.assert_called_once()
+    cap_b.close.assert_called_once()
+
+
+def test_close_detectors_is_best_effort():
+    """One backend's close() raising must not stop the others from closing."""
+    orch = Orchestrator([_char()], dry_run=True)
+    broken = MagicMock()
+    broken.close.side_effect = RuntimeError("boom")
+    fine = MagicMock()
+    orch._detectors = {
+        1: {**_mock_det(), "capture": broken},
+        2: {**_mock_det(), "capture": fine},
+    }
+
+    orch._close_detectors()  # must not raise
+
+    fine.close.assert_called_once()
+
+
+def test_close_detectors_noop_when_empty():
+    orch = Orchestrator([_char()], dry_run=True)
+    orch._close_detectors()  # must not raise on an empty/never-populated cache
+
+
+def test_run_calls_close_detectors_on_normal_completion(monkeypatch):
+    orch = Orchestrator([_char(max_runs=1)], dry_run=True)
+    closed = []
+    monkeypatch.setattr(orch, "_close_detectors", lambda: closed.append(True))
+
+    orch.run()
+
+    assert closed == [True]
+
+
+def test_run_calls_close_detectors_even_if_main_loop_raises(monkeypatch):
+    orch = Orchestrator([_char(max_runs=1)], dry_run=True)
+    closed = []
+    monkeypatch.setattr(orch, "_close_detectors", lambda: closed.append(True))
+    monkeypatch.setattr(orch, "_run_main_loop", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        orch.run()
+
+    assert closed == [True]

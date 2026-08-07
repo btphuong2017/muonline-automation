@@ -65,6 +65,44 @@ Khi một gate được xác nhận, thêm một mục vào đây — agent `tec
   `tests/config_/test_characters.py`, `README.md`.
 - Open questions còn lại liên quan: không.
 
+### Perf: giảm CPU/GDI churn khi chạy start-varka lâu — 2026-08-06
+
+- Vấn đề user báo: chạy `start-varka` nhiều lần/nhiều giờ thì máy "cảm giác chậm đi" trong khi
+  RAM không tăng — dấu hiệu tốn CPU/GDI/đĩa lặp lại mỗi tick, không phải rò bộ nhớ.
+- Xác nhận: không có memory/thread/file-handle leak trên đường `start-varka`. Nhưng
+  `MssBackend.grab()` tạo mới + huỷ `mss.mss()` (toàn bộ pipeline GDI:
+  `GetWindowDC`/`CreateCompatibleDC`/`CreateDIBSection`/`BitBlt` với `CAPTUREBLT`/`DeleteDC`/
+  `ReleaseDC`) mỗi lần chụp màn hình dù instance đã được cache theo hwnd; và
+  `match_template()` đọc + decode PNG từ đĩa + `glob()` thư mục MỖI lần gọi, không cache — ca
+  xấu nhất (`npc/hover_indicator`, 7 file sibling) tốn ~1.600-6.400 lần `cv2.imread` MỖI lần
+  quét NPC (tới 200 ứng viên/lần attach).
+- Sửa:
+  - `MssBackend` tái sử dụng 1 instance `mss.MSS` cho mọi `grab()` thay vì tạo/huỷ mỗi lần;
+    thêm `close()` + `__del__` (safety net cho các nơi tạo `MssBackend()` dùng 1 lần rồi bỏ,
+    ví dụ `harmory.py`/`capability/tests.py` — không có `with mss.mss()` nữa nên cần safety
+    net để không leak GDI ở các nơi đó); tự phục hồi nếu instance cache bị stale (lỗi 1 lần →
+    tạo lại → thử lại).
+  - `template_match.py` cache template đã decode theo `(path, mtime)` + cache glob sibling
+    theo path — loại bỏ hàng trăm nghìn lần đọc+decode PNG mỗi phiên chạy nhiều giờ.
+  - `window_session._assert_on_top` kiểm tra `is_window_on_top` TRƯỚC khi raise (khớp pattern
+    `Session.ensure()` đã có sẵn) — bỏ raise dư thừa khi cửa sổ đã ở trên cùng.
+  - `PrintWindowBackend`: chuyển cleanup HDC/HBITMAP vào `finally` — bug rò GDI handle thật
+    (không nằm trên đường `start-varka`, chỉ dùng ở `capability-test`, sửa luôn theo yêu cầu
+    user).
+  - `Orchestrator.run()` gọi `_close_detectors()` trong `finally` để đóng mọi `MssBackend` đã
+    cache khi orchestrator dừng (bình thường/abort/exception).
+- Lệnh verification: `uv run pytest -q` (219 passed). Trên game thật: theo dõi cột "GDI
+  Objects"/"Handles" trong Task Manager cho tiến trình bot khi chạy `start-varka` — phải ổn
+  định phẳng thay vì tăng-giảm liên tục.
+- File chính đã thay đổi: `src/varka_auto/automation/capture.py`,
+  `src/varka_auto/vision/template_match.py`, `src/varka_auto/automation/window_session.py`,
+  `src/varka_auto/orchestrator.py`, `tests/automation/test_capture.py`,
+  `tests/vision/test_template_match.py` (mới), `tests/automation/test_window_session.py`
+  (mới), `tests/test_orchestrator.py`.
+- Open questions còn lại liên quan: không. Cố ý KHÔNG đụng chi phí quét NPC (grid ~377 điểm,
+  settle 0.5s/điểm, `max_candidates=200`) — đánh đổi độ tin cậy click, để riêng lần khác kèm
+  test kỹ trên game thật (đã xác nhận với user).
+
 ### Gate 5 fix — 2026-08-06
 
 - Vấn đề: sau khi vào event map, helper activation dùng `time.sleep(2.5)` cứng rồi chỉ có
