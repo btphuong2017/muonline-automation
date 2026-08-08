@@ -44,6 +44,27 @@ Khi một gate được xác nhận, thêm một mục vào đây — agent `tec
 - Open questions còn lại liên quan: <hoặc “không”>
 ```
 
+### Gate 1 extension — 2026-08-06
+
+- Yêu cầu: một command giống `scan-windows` nhưng cũng ép ghi `config/characters.yaml` với
+  `max_runs=10`, `enabled=true` cho mọi char quét được.
+- Phát hiện khi khảo sát: `sync-characters` đã tồn tại từ trước (không có trong README) nhưng
+  chỉ áp giá trị chuẩn cho char MỚI — char đã có trong config thì giữ nguyên settings cũ, khác
+  với yêu cầu "ép cho mọi char".
+- Sửa: thêm cờ `--sync` (+ `--max-runs`, `--dry-run`) vào `scan-windows` — giữ nguyên toàn bộ
+  bảng/JSN snapshot/`--debug` hiện có, thêm bước ghi config ở cuối. Tách logic merge dùng
+  chung thành `merge_detected_characters(existing, detected_names, max_runs, force)` trong
+  `config_/characters.py` (hàm thuần, không I/O) — `scan-windows --sync` gọi với `force=True`
+  (ép), `sync-characters` gọi với `force=False` (giữ nguyên, hành vi không đổi). Chặn sync khi
+  có tên cửa sổ trùng nhau (trước đó `scan-windows` chỉ cảnh báo, không chặn) để tránh gộp
+  nhầm 2 cửa sổ thành 1 entry config.
+- Lệnh verification: `uv run pytest tests/config_/ -v` (16 passed), `uv run pytest -q`
+  (200 passed). Trên game thật: `uv run python -m varka_auto scan-windows --sync --dry-run`
+  rồi `scan-windows --sync` để ghi.
+- File chính đã thay đổi: `src/varka_auto/config_/characters.py`, `src/varka_auto/cli.py`,
+  `tests/config_/test_characters.py`, `README.md`.
+- Open questions còn lại liên quan: không.
+
 ### Perf: giảm CPU/GDI churn khi chạy start-varka lâu — 2026-08-06
 
 - Vấn đề user báo: chạy `start-varka` nhiều lần/nhiều giờ thì máy "cảm giác chậm đi" trong khi

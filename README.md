@@ -170,6 +170,21 @@ uv run python -m varka_auto scan-windows
 ```
 Hiển thị danh sách cửa sổ Mu Online đang mở: hwnd, tên char, level, rect.
 
+Thêm `--sync` để đồng thời cập nhật `config/characters.yaml`: **ép** `enabled=true` và
+`max_runs=10` (đổi bằng `--max-runs`) cho MỌI char quét được — kể cả char đã có config khác
+— và xoá char không còn cửa sổ mở. Dùng `--dry-run` để xem trước không ghi file:
+```bash
+uv run python -m varka_auto scan-windows --sync --dry-run   # xem trước
+uv run python -m varka_auto scan-windows --sync             # ghi thật
+```
+
+Nếu chỉ muốn thêm char mới/xoá char đã đóng mà **giữ nguyên** `enabled`/`max_runs` của char
+đang có sẵn (không ép về giá trị chuẩn), dùng lệnh riêng:
+```bash
+uv run python -m varka_auto sync-characters --dry-run
+uv run python -m varka_auto sync-characters
+```
+
 ### Kiểm tra capability (foreground/background input)
 ```bash
 uv run python -m varka_auto capability-test --char PPGL

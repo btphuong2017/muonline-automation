@@ -8,6 +8,7 @@ from varka_auto.config_.characters import (
     CharacterConfig,
     CharactersConfigError,
     load_characters,
+    merge_detected_characters,
     save_characters,
 )
 
@@ -106,3 +107,68 @@ def test_save_characters_creates_parent_dir(tmp_path):
     assert p.exists()
     loaded = load_characters(p)
     assert loaded[0].display_name == "X"
+
+
+# ---------------------------------------------------------------------------
+# merge_detected_characters
+# ---------------------------------------------------------------------------
+
+def test_merge_force_updates_disabled_and_wrong_max_runs():
+    existing = [CharacterConfig(display_name="A", enabled=False, max_runs=5)]
+    merged, actions = merge_detected_characters(existing, ["A"], max_runs=10, force=True)
+
+    assert merged == [CharacterConfig(display_name="A", enabled=True, max_runs=10)]
+    assert len(actions) == 1
+    assert actions[0].tag == "UPDATED"
+    assert actions[0].display_name == "A"
+    assert "enabled false->true" in actions[0].note
+    assert "max_runs 5->10" in actions[0].note
+
+
+def test_merge_force_already_correct_is_kept_not_updated():
+    existing = [CharacterConfig(display_name="A", enabled=True, max_runs=10)]
+    merged, actions = merge_detected_characters(existing, ["A"], max_runs=10, force=True)
+
+    assert merged == [CharacterConfig(display_name="A", enabled=True, max_runs=10)]
+    assert actions[0].tag == "KEPT"
+
+
+def test_merge_no_force_preserves_existing_settings():
+    existing = [CharacterConfig(display_name="A", enabled=False, max_runs=5)]
+    merged, actions = merge_detected_characters(existing, ["A"], max_runs=10, force=False)
+
+    assert merged == [CharacterConfig(display_name="A", enabled=False, max_runs=5)]
+    assert actions[0].tag == "KEPT"
+
+
+def test_merge_adds_new_character():
+    merged, actions = merge_detected_characters([], ["NewChar"], max_runs=10, force=True)
+
+    assert merged == [CharacterConfig(display_name="NewChar", enabled=True, max_runs=10)]
+    assert actions[0].tag == "ADDED"
+
+
+def test_merge_removes_character_with_no_window():
+    existing = [CharacterConfig(display_name="Gone", enabled=True, max_runs=10)]
+    merged, actions = merge_detected_characters(existing, [], max_runs=10, force=True)
+
+    assert merged == []
+    assert len(actions) == 1
+    assert actions[0].tag == "REMOVED"
+    assert actions[0].display_name == "Gone"
+
+
+def test_merge_force_preserves_level():
+    existing = [CharacterConfig(display_name="A", enabled=False, max_runs=5, level=400)]
+    merged, actions = merge_detected_characters(existing, ["A"], max_runs=10, force=True)
+
+    assert merged[0].level == 400
+
+
+def test_merge_output_order_matches_detected_names():
+    existing = [CharacterConfig(display_name="B", enabled=True, max_runs=10)]
+    merged, actions = merge_detected_characters(
+        existing, ["C", "B", "A"], max_runs=10, force=True
+    )
+
+    assert [c.display_name for c in merged] == ["C", "B", "A"]
